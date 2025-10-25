@@ -1,176 +1,356 @@
 # AgentFlow - Quick Start Guide
 
-## Installation Complete!
+Get up and running with AgentFlow in 5 minutes!
 
-All dependencies are installed and the application is ready to use.
+## Prerequisites
 
-## Running AgentFlow
+- macOS (currently required)
+- Python 3.8+
+- Google Gemini API key
+- Terminal access
 
-### Run the Floating Overlay:
+## Installation
+
+### 1. Install Dependencies
 
 ```bash
-./start_overlay.sh
+cd agentflow/backend
+
+# Activate virtual environment (if not already activated)
+source venv/bin/activate
+
+# Install required packages
+pip install -r requirements.txt
 ```
 
-**This is the main way to use AgentFlow!**
+**Note:** This will install ~500MB of packages including computer vision libraries. The first run may take several minutes.
 
-A small floating window will appear in the top-right corner of your screen. It stays on top of everything so you can control recording while using your computer normally.
+### 2. Set API Key
 
-### The Overlay Controls:
+Get a Gemini API key from: https://makersuite.google.com/app/apikey
 
-- **⏺ Record** - Start recording clicks
-- **⏹ Stop** - Stop recording
-- **💾 Save** - Save recording to file
-- **📁 Load** - Load a previous recording
-- **▶ Play** - Play back the recording
-- **—** - Minimize to dock
-
-## Quick Demo
-
-Here's a quick workflow to test it out:
-
-### 1. Start the Overlay
 ```bash
-./start_overlay.sh
+export GOOGLE_API_KEY='your_api_key_here'
 ```
 
-A small window appears in the top-right corner. It shows "● Ready" and "Clicks: 0".
+**Tip:** Add this to your `~/.zshrc` or `~/.bashrc` to persist across sessions.
 
-### 2. Record Some Actions
-- Click the **⏺ Record** button in the overlay
-- The button turns red and shows **⏹ Stop**
-- Now click around your screen a few times (try different apps, buttons, etc.)
-- The overlay shows your click count increasing
-- Click **⏹ Stop** when done
+### 3. Grant Permissions
 
-### 3. Save Your Recording
-- Click **💾 Save** in the overlay
-- Choose a filename like `test.json`
-- Click Save
+AgentFlow needs accessibility permissions to control your screen:
 
-### 4. Play It Back
-- Click **▶ Play** in the overlay
-- Confirm "Yes" in the dialog
-- Watch as your clicks are replayed automatically with the same timing!
+1. Open **System Settings** → **Privacy & Security** → **Accessibility**
+2. Click the lock icon and authenticate
+3. Click **+** and add **Terminal** (or your terminal app)
+4. Enable the checkbox
 
-### 5. Load Previous Recordings
-- Click **📁 Load** to load any saved recording
-- Select the file
-- Click **▶ Play** to replay it
+## First Run
 
-## Important Permissions
+### Test Basic Execution
 
-On first run, macOS will ask for permissions:
-
-1. **Accessibility Access** - Required to record clicks
-   - System Preferences > Security & Privacy > Privacy > Accessibility
-   - Add Terminal (or iTerm, or your Python interpreter)
-
-2. **Screen Recording** - May be required for some features
-   - System Preferences > Security & Privacy > Privacy > Screen Recording
-   - Add Terminal (or iTerm, or your Python interpreter)
-
-## Features
-
-### What It Records
-- **Click positions** (x, y coordinates)
-- **Click timing** (how long between each click)
-- **Button type** (left, right, middle click)
-- **Window states** (positions and sizes of all windows at start)
-
-### What It Can Do
-- **Save** recordings as JSON files
-- **Load** previously saved recordings
-- **Play back** recordings with accurate timing
-- **Preview** recordings before playing
-
-### Safety Features
-- **Failsafe**: Move mouse to corner of screen to abort playback
-- **Confirmation**: Must type 'yes' before playback starts
-- **Countdown**: 3-second countdown before playback begins
-
-## Example Workflow
-
-### Automate a Repetitive Task
-
-1. **Record once**: Start recording, perform the task once, stop
-2. **Save it**: Save the recording for future use
-3. **Replay anytime**: Load and replay whenever you need to repeat the task
-
-### Use Cases
-- Testing UI interactions
-- Automating repetitive clicking tasks
-- Demonstrating workflows
-- Creating interaction macros
-- Testing different window layouts
-
-## File Structure
-
-Your recordings are saved as JSON files:
-
-```json
-{
-  "metadata": {
-    "recorded_at": "2025-01-15T10:30:00",
-    "duration": 45.5,
-    "action_count": 10
-  },
-  "windows": [ /* window states */ ],
-  "actions": [
-    {
-      "type": "click",
-      "x": 500,
-      "y": 300,
-      "button": "Button.left",
-      "wait_before": 2.5,
-      "timestamp": "2025-01-15T10:30:05"
-    }
-    /* ... more actions ... */
-  ]
-}
+```bash
+python agent_interface.py
 ```
+
+Try: `"open canvas.asu.edu and open my machine learning class"`
+
+This uses the basic AI-powered execution (no learning yet).
+
+### Test Enhanced Version with Recording
+
+```bash
+python agent_enhanced.py
+```
+
+You'll see:
+```
+✅ Enhanced AgentFlow initialized
+   - Visual memory enabled
+   - Workflow recording enabled
+   - Visual analysis enabled
+   - Visual execution enabled
+
+💬 
+```
+
+## Your First Workflow
+
+Let's teach AgentFlow to open a Canvas class!
+
+### Step 1: Start Recording
+
+```
+💬 record
+```
+
+Enter details:
+```
+Workflow name: Open Canvas Class
+Description: Navigate to Canvas and open a specific class
+Tags: canvas, education
+```
+
+You'll see:
+```
+🔴 RECORDING: Open Canvas Class
+======================================================================
+Perform your workflow naturally.
+I'll watch and learn!
+
+When done, call: recorder.stop_recording()
+======================================================================
+```
+
+### Step 2: Perform Your Workflow
+
+**Important:** Do these actions slowly and deliberately:
+
+1. Click on your browser (if not already open)
+2. Navigate to canvas.asu.edu (if not there)
+3. Click on a class (e.g., "Machine Learning")
+4. Wait a moment after each action
+
+The system will capture:
+- Every click
+- Every scroll
+- Screenshots before/after each action
+- What text you clicked on (using OCR)
+
+### Step 3: Stop Recording
+
+Back in the terminal:
+```
+💬 stop
+```
+
+The system will analyze your recording:
+```
+⏹  STOPPED RECORDING: Open Canvas Class
+======================================================================
+
+Recorded 2 steps
+
+💡 Analyzing workflow for parameters...
+
+📊 Identified Parameters:
+  - class_name: Name of the class to open
+    Example: Machine Learning
+
+✅ Parameters saved to workflow
+```
+
+### Step 4: Use Your Learned Workflow
+
+Now tell AgentFlow to do the same thing for a different class:
+
+```
+💬 Open my DataVis class on Canvas
+```
+
+The system will:
+```
+✨ Found matching workflow: Open Canvas Class
+   Confidence: 90%
+   
+   Execute this workflow? [Y/n]: y
+
+🎬 Executing learned workflow: Open Canvas Class
+======================================================================
+
+Parameters:
+  class_name = DataVis
+
+⚠️  Starting execution in 3 seconds...
+DON'T TOUCH YOUR MOUSE OR KEYBOARD!
+   3...
+   2...
+   1...
+
+🤖 Executing workflow...
+
+🔸 Step 1: click
+   Looking for: 'Machine Learning'
+   Substituted to: 'DataVis'
+   Searching with OCR...
+   Found: 'DataVis' (similarity: 95%)
+   Clicking at (521, 342)
+
+======================================================================
+✅ Workflow execution completed
+======================================================================
+```
+
+**It just did it!** 🎉
+
+## Common Commands
+
+| Command | Description |
+|---------|-------------|
+| `record` | Start recording a new workflow |
+| `stop` | Stop current recording |
+| `list` | Show all learned workflows |
+| `memory` | Show agent's memory |
+| `quit` or `exit` | Exit the program |
+
+## Tips for Better Workflows
+
+### Do's ✅
+- **Click deliberately** - Pause between actions
+- **Use clear targets** - Click on text labels, not icons
+- **Keep it simple** - Record straightforward workflows first
+- **Name it well** - Use descriptive workflow names
+- **Add good descriptions** - Help matching later
+
+### Don'ts ❌
+- **Don't rush** - System needs time to capture screenshots
+- **Don't use complex UI** - Avoid custom controls for now
+- **Don't record errors** - If you mess up, start over
+- **Don't touch mouse during replay** - Let the AI control
 
 ## Troubleshooting
 
-### "Permission denied" when clicking
-→ Grant Accessibility permissions (see above)
+### "OCR not working"
 
-### Playback not working
-→ Ensure screen resolution hasn't changed since recording
+If you see warnings about Tesseract or EasyOCR:
 
-### "Module not found" errors
-→ Make sure you're using the venv: `./venv/bin/python`
+```bash
+# macOS
+brew install tesseract
 
-### Clicks going to wrong locations
-→ Window positions may have changed - recordings include absolute coordinates
+# Then reinstall Python packages
+pip install --force-reinstall pytesseract easyocr
+```
 
-## Tips & Tricks
+### "Accessibility permissions denied"
 
-1. **Test with simple tasks first** - Record just 2-3 clicks to get comfortable
+Make sure you've granted Terminal accessibility permissions (see step 3 above).
 
-2. **Watch the timing** - The recorder captures real wait times between clicks
+### "Element not found during execution"
 
-3. **Position windows consistently** - For best results, windows should be in same positions during playback
+The system tries multiple strategies:
+1. OCR text matching
+2. Vision LLM location
+3. Fallback to original coordinates
 
-4. **Use preview before playing** - Always preview to see what will happen
+If it fails:
+- UI might have changed significantly
+- Text might not be visible
+- Try recording a new workflow with current UI
 
-5. **Keep recordings short** - Shorter recordings are easier to debug and more reliable
+### "Workflow execution seems slow"
+
+- OCR takes 1-2 seconds per step
+- Vision LLM queries take 2-3 seconds
+- This is normal for accuracy
+
+## Examples
+
+### Example 1: Email Workflow
+
+```
+💬 record
+Workflow name: Send Email to Professor
+Description: Compose and send email to course professor
+Tags: email, communication
+
+[Perform actions:]
+1. Click Gmail
+2. Click Compose
+3. Type recipient email
+4. Type subject
+5. Type message
+6. Click Send
+
+💬 stop
+```
+
+Later:
+```
+💬 Send email to Dr. Smith about assignment extension
+```
+
+### Example 2: File Download
+
+```
+💬 record
+Workflow name: Download Course Materials
+Description: Download files from Canvas course page
+Tags: canvas, download
+
+[Perform actions:]
+1. Navigate to course
+2. Click Files
+3. Click on file
+4. Click Download
+
+💬 stop
+```
+
+Later:
+```
+💬 Download materials from my DataVis class
+```
+
+### Example 3: Research Paper
+
+```
+💬 record
+Workflow name: Save Paper from arXiv
+Description: Download paper and save to Papers folder
+Tags: research, papers
+
+[Perform actions:]
+1. Go to arXiv URL
+2. Click PDF link
+3. Save to ~/Papers/
+
+💬 stop
+```
+
+Later:
+```
+💬 Save paper from arxiv.org/abs/2304.12345
+```
 
 ## Next Steps
 
-- Read the full [README.md](README.md) for detailed documentation
-- Try recording a simple task and playing it back
-- Experiment with saving and loading recordings
-- Consider adding keyboard support (see future enhancements in README)
+- Read [`README.md`](README.md) for full documentation
+- Check [`ARCHITECTURE.md`](ARCHITECTURE.md) to understand how it works
+- Read [`RESEARCH.md`](RESEARCH.md) for technology deep-dive
+- Review [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) for current state
 
-## Getting Help
+## Get Help
 
-If you encounter issues:
-1. Check that permissions are granted
-2. Try the test script: `./venv/bin/python test_basic.py`
-3. Check the terminal output for error messages
-4. Make sure you're in the agentflow directory
+- **Issues?** Check troubleshooting section above
+- **Questions?** Read the full docs
+- **Bugs?** File an issue on GitHub
+- **Ideas?** We'd love to hear them!
+
+## Limitations
+
+Current version (Beta):
+- ✅ Records workflows perfectly
+- ✅ Identifies parameters automatically
+- ✅ Matches user intent to workflows
+- ✅ Executes with OCR + Vision guidance
+- ⚠️ May struggle with:
+  - Very complex UI
+  - Custom widgets
+  - Fast-changing content
+  - Multiple monitors
+
+## What's Next?
+
+After you're comfortable:
+1. Record more workflows
+2. Try complex multi-step tasks
+3. Experiment with different applications
+4. Share workflows with team (export/import)
+5. Contribute improvements!
 
 ---
 
-**Happy Automating!**
+**Happy Automating! 🚀**
+
+Made with ❤️ for CalHacks 2025
+

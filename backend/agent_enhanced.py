@@ -16,6 +16,7 @@ from agent_interface import AgentInterface, AgentMemory
 from visual_memory import VisualWorkflowMemory
 from recorder import WorkflowRecorder
 from visual_analyzer import VisualAnalyzer
+from visual_executor import VisualExecutor
 
 
 class EnhancedAgentInterface(AgentInterface):
@@ -36,11 +37,13 @@ class EnhancedAgentInterface(AgentInterface):
         self.visual_memory = VisualWorkflowMemory()
         self.recorder = WorkflowRecorder(memory=self.visual_memory)
         self.visual_analyzer = VisualAnalyzer()
+        self.visual_executor = VisualExecutor(analyzer=self.visual_analyzer)
         
         print("✅ Enhanced AgentFlow initialized")
         print("   - Visual memory enabled")
         print("   - Workflow recording enabled")
         print("   - Visual analysis enabled")
+        print("   - Visual execution enabled")
     
     def record_workflow(self, workflow_name: str = None, description: str = ""):
         """
@@ -269,28 +272,33 @@ If a parameter can't be determined, use null.
         print("=" * 70)
         
         if parameters:
-            print("Parameters:")
+            print("\nParameters:")
             for k, v in parameters.items():
                 print(f"  {k} = {v}")
         
-        print("\n⚠️  Advanced visual-guided execution not yet implemented.")
-        print("For now, this would:")
-        print("  1. Take screenshot")
-        print("  2. For each step in workflow:")
-        print("     - Use OCR to find target element with substituted parameters")
-        print("     - Calculate click coordinates")
-        print("     - Execute action")
-        print("     - Verify state change")
-        print()
+        # Countdown before starting
+        print("\n⚠️  Starting execution in 3 seconds...")
+        print("DON'T TOUCH YOUR MOUSE OR KEYBOARD!")
+        for i in range(3, 0, -1):
+            print(f"   {i}...")
+            time.sleep(1)
         
-        # TODO: Implement visual-guided execution
-        # This is a complex component that requires:
-        # - Element location using OCR and vision
-        # - Coordinate translation
-        # - Retry logic
-        # - State verification
+        print("\n🤖 Executing workflow...\n")
         
-        print("✅ Workflow execution (simulated)")
+        # Execute with visual executor
+        success = self.visual_executor.execute_workflow(
+            workflow=workflow,
+            parameters=parameters,
+            verbose=True
+        )
+        
+        if success:
+            # Update usage count
+            self.visual_memory.increment_usage(workflow['workflow_id'])
+            return True
+        else:
+            print("\n❌ Workflow execution failed")
+            return False
     
     def chat_loop(self):
         """Enhanced interactive loop with recording mode."""
