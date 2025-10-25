@@ -14,7 +14,7 @@ Get up and running with AgentFlow in 5 minutes!
 ### 1. Install Dependencies
 
 ```bash
-cd agentflow/backend
+cd backend
 
 # Activate virtual environment (if not already activated)
 source venv/bin/activate
