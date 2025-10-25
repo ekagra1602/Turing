@@ -1,0 +1,77 @@
+{
+  "screen_size": [
+    1512,
+    982
+  ],
+  "average_offset": [
+    0,
+    0
+  ],
+  "recordings": [
+    {
+      "target": [
+        100,
+        100
+      ],
+      "recorded": [
+        100,
+        100
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "corner": "top-left"
+    },
+    {
+      "target": [
+        1412,
+        100
+      ],
+      "recorded": [
+        1412,
+        100
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "corner": "top-right"
+    },
+    {
+      "target": [
+        100,
+        882
+      ],
+      "recorded": [
+        100,
+        882
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "corner": "bottom-left"
+    },
+    {
+      "target": [
+        1412,
+        882
+      ],
+      "recorded": [
+        1412,
+        882
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "corner": "bottom-right"
+    }
+  ],
+  "offset_variation": [
+    0,
+    0
+  ],
+  "calibration_type": "simple_offset"
+}
