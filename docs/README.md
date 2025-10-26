@@ -1,10 +1,10 @@
-# AgentFlow - Learn by Observation
+# Turing - Learn by Observation
 
 <img src="https://img.shields.io/badge/Status-Beta-yellow" />
 <img src="https://img.shields.io/badge/Python-3.8%2B-blue" />
 <img src="https://img.shields.io/badge/Platform-macOS-lightgrey" />
 
-**AgentFlow** is an AI agent that learns by watching you work. Like an intern that shadows you, learns your workflows, and then executes them autonomously.
+**Turing** is an AI agent that learns by watching you work. Like an intern that shadows you, learns your workflows, and then executes them autonomously.
 
 ## 🎯 Vision
 
@@ -13,7 +13,7 @@ Imagine telling your computer:
 
 And it just... does it. Because it watched you do it once for your Machine Learning class.
 
-That's AgentFlow.
+That's Turing.
 
 ## ✨ Features
 
@@ -95,7 +95,7 @@ That's AgentFlow.
 
 ```bash
 # Navigate to backend directory
-cd agentflow/backend
+cd Turing/backend
 
 # Activate virtual environment
 source venv/bin/activate
