@@ -138,12 +138,18 @@ class RecordingProcessor:
         if not video.isOpened():
             raise RuntimeError(f"Could not open video: {video_path}")
         
-        fps = video.get(cv2.CAP_PROP_FPS)
+        # CRITICAL: Use FPS from events.json, not from video file!
+        # The video may have been rescaled, and ffmpeg's setpts doesn't update FPS metadata
+        # Instead, the rescaler updates events.json with the correct FPS for frame extraction
+        fps = events_data.get('fps', video.get(cv2.CAP_PROP_FPS))
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
         video_duration = total_frames / fps if fps > 0 else 0
         
         if show_progress:
-            print(f"   FPS: {fps}")
+            if events_data.get('corrected_fps'):
+                print(f"   FPS: {fps:.2f} (corrected after rescaling)")
+            else:
+                print(f"   FPS: {fps}")
             print(f"   Video frames: {total_frames}")
             print(f"   Video duration: {video_duration:.2f}s")
             
@@ -156,6 +162,8 @@ class RecordingProcessor:
                 print(f"   Video duration: {video_duration:.2f}s")
                 print(f"   Speed ratio: {speed_ratio:.2f}x")
                 print(f"   This may cause frame extraction issues")
+            else:
+                print(f"   ✅ Video and events are in sync!")
         
         # Analyze full video for overall intention (Gemini 2.0 Flash supports video!)
         workflow_intention = None

@@ -76,6 +76,44 @@ def rescale_video_to_duration(recording_path: Path, show_progress: bool = True) 
         if duration_diff < 0.5:  # Less than 0.5 second difference
             if show_progress:
                 print(f"   ✅ Video duration is already correct (diff: {duration_diff:.2f}s)")
+            
+            # Even if duration is correct, update events.json with correct FPS
+            events_path = recording_path / "events.json"
+            if events_path.exists():
+                try:
+                    with open(events_path, 'r') as f:
+                        events_data = json.load(f)
+                    
+                    # Get frame count
+                    probe_cmd = [
+                        'ffprobe',
+                        '-v', 'error',
+                        '-count_frames',
+                        '-select_streams', 'v:0',
+                        '-show_entries', 'stream=nb_read_frames',
+                        '-of', 'default=noprint_wrappers=1:nokey=1',
+                        str(video_path)
+                    ]
+                    result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+                    frame_count = int(result.stdout.strip())
+                    
+                    # Calculate correct FPS
+                    actual_fps = frame_count / actual_duration
+                    
+                    # Update events.json
+                    events_data['fps'] = actual_fps
+                    events_data['corrected_fps'] = True
+                    events_data['original_fps'] = events_data.get('fps', 30)
+                    
+                    with open(events_path, 'w') as f:
+                        json.dump(events_data, f, indent=2)
+                    
+                    if show_progress:
+                        print(f"   📝 Updated events.json with corrected FPS: {actual_fps:.2f}")
+                except Exception as e:
+                    if show_progress:
+                        print(f"   ⚠️  Could not update events.json: {e}")
+            
             return True
     
     # Calculate speed filter for ffmpeg
@@ -166,6 +204,46 @@ def rescale_video_to_duration(recording_path: Path, show_progress: bool = True) 
             print(f"   📦 Replaced video (original backup already exists)")
     
     temp_path.rename(video_path)
+    
+    # CRITICAL: Update events.json with corrected FPS for the rescaled video
+    # The video now has the correct duration, but we need to update the FPS metadata
+    # so the recording processor can extract frames correctly
+    events_path = recording_path / "events.json"
+    if events_path.exists():
+        try:
+            with open(events_path, 'r') as f:
+                events_data = json.load(f)
+            
+            # Get the actual frame count and duration
+            probe_cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-count_frames',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=nb_read_frames',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                str(video_path)
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            frame_count = int(result.stdout.strip())
+            
+            # Calculate the actual FPS needed for correct frame extraction
+            # This is critical: duration is correct, but FPS metadata needs updating
+            actual_fps = frame_count / actual_duration
+            
+            # Update events.json with corrected FPS
+            events_data['fps'] = actual_fps
+            events_data['corrected_fps'] = True  # Flag that we corrected it
+            events_data['original_fps'] = fps if 'original_fps' not in events_data else events_data.get('original_fps')
+            
+            with open(events_path, 'w') as f:
+                json.dump(events_data, f, indent=2)
+            
+            if show_progress:
+                print(f"   📝 Updated events.json with corrected FPS: {actual_fps:.2f}")
+        except Exception as e:
+            if show_progress:
+                print(f"   ⚠️  Could not update events.json FPS: {e}")
     
     if show_progress:
         print(f"   ")
