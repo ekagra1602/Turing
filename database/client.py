@@ -42,7 +42,8 @@ class SnowflakeAPIClient:
         account: str = 'YOUR_ACCOUNT',
         warehouse: str = 'YOUR_WAREHOUSE',
         database: str = 'YOUR_DATABASE',
-        schema: str = 'YOUR_SCHEMA'
+        schema: str = 'YOUR_SCHEMA',
+        role: Optional[str] = None
     ):
         """
         Initialize Snowflake API client with configuration
@@ -52,19 +53,28 @@ class SnowflakeAPIClient:
             warehouse: Snowflake warehouse name (e.g., 'COMPUTE_WH')
             database: Database name (e.g., 'PRODUCTION_DB')
             schema: Schema name (e.g., 'PUBLIC')
+            role: Optional role name (e.g., 'ACCOUNTADMIN', uses user default if None)
 
         Example:
             client = SnowflakeAPIClient(
                 account='mycompany.us-west-2',
                 warehouse='COMPUTE_WH',
                 database='ANALYTICS',
-                schema='PUBLIC'
+                schema='PUBLIC',
+                role='ANALYST_ROLE'
             )
+
+        Important Notes:
+            - Database, schema, and warehouse names are CASE-SENSITIVE
+            - AUTOCOMMIT must be TRUE (set per query or statement level)
+            - PUT and GET commands are NOT supported
+            - For multi-statement requests, use semicolons between statements
         """
         self.account = account
         self.warehouse = warehouse
         self.database = database
         self.schema = schema
+        self.role = role
 
         # Construct base URL for Snowflake SQL API
         self.base_url = f"https://{self.account}.snowflakecomputing.com/api/v2/statements"
@@ -75,31 +85,57 @@ class SnowflakeAPIClient:
 
         Returns HTTP headers needed for API requests. YOU NEED TO ADD YOUR AUTH HERE!
 
-        Common auth methods:
-            - Bearer token: 'Authorization': 'Bearer YOUR_ACCESS_TOKEN'
-            - OAuth: 'Authorization': 'Bearer YOUR_OAUTH_TOKEN'
-            - Key Pair JWT: 'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
+        Snowflake supports two authentication methods:
 
-        Example:
+        1. OAuth Authentication:
+            - Header: 'Authorization': 'Bearer <oauth_token>'
+            - Optional: 'X-Snowflake-Authorization-Token-Type': 'OAUTH'
+
+        2. Key Pair JWT Authentication:
+            - Header: 'Authorization': 'Bearer <jwt_token>'
+            - Optional: 'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
+            - JWT must include: iss, sub, iat, exp fields
+            - JWT expires after 1 hour maximum
+
+        Example (OAuth):
             def _get_headers(self):
                 return {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'Authorization': f'Bearer {self.access_token}'  # Add your token here
+                    'Authorization': f'Bearer {self.oauth_token}',
+                    'X-Snowflake-Authorization-Token-Type': 'OAUTH'
                 }
+
+        Example (Key Pair JWT):
+            def _get_headers(self):
+                return {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': f'Bearer {self.jwt_token}',
+                    'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
+                }
+
+        Reference: https://docs.snowflake.com/en/developer-guide/sql-api/authenticating
         """
         return {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            # TODO: Add your authentication header here
-            # 'Authorization': 'Bearer YOUR_TOKEN' or 'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
+            # TODO: Add your authentication headers here
+            # Option 1 - OAuth:
+            # 'Authorization': 'Bearer YOUR_OAUTH_TOKEN',
+            # 'X-Snowflake-Authorization-Token-Type': 'OAUTH'
+            #
+            # Option 2 - Key Pair JWT:
+            # 'Authorization': 'Bearer YOUR_JWT_TOKEN',
+            # 'X-Snowflake-Authorization-Token-Type': 'KEYPAIR_JWT'
         }
 
     def execute_statement(
         self,
         sql: str,
-        timeout: int = 60,
-        bindings: Optional[Dict[str, Any]] = None
+        timeout: Optional[int] = None,
+        bindings: Optional[Dict[str, Any]] = None,
+        role: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Execute a SQL statement using Snowflake SQL API
@@ -109,53 +145,92 @@ class SnowflakeAPIClient:
 
         Args:
             sql: SQL statement to execute (e.g., "SELECT * FROM users WHERE id = 1")
-            timeout: Maximum seconds to wait for query completion (default: 60)
-            bindings: Parameter bindings for prepared statements (optional, for security)
+                 For multiple statements, separate with semicolons
+            timeout: Maximum seconds to wait (None = uses STATEMENT_TIMEOUT_IN_SECONDS)
+            bindings: Parameter bindings for prepared statements (use ? placeholders)
+            role: Role to use for this statement (overrides client default)
 
         Returns:
-            Dict with query results and metadata, or error info if failed
+            Dict with query results and metadata. Possible structures:
+            - HTTP 200: ResultSet object with 'data', 'statementHandle', etc.
+            - HTTP 202: QueryStatus object (query still running)
+            - HTTP 422: QueryFailureStatus object (query failed)
+            - HTTP 429: Rate limited, retry with backoff
 
         Example 1 - Simple query:
             result = client.execute_statement("SELECT * FROM users LIMIT 5")
-            print(result['data'])  # Access the results
+            if 'data' in result:
+                print(result['data'])  # Access the results
 
-        Example 2 - With parameter bindings:
+        Example 2 - With parameter bindings (use ? placeholders):
             result = client.execute_statement(
-                "SELECT * FROM users WHERE status = :1 AND age > :2",
+                "SELECT * FROM users WHERE status = ? AND age > ?",
                 bindings={
                     '1': {'type': 'TEXT', 'value': 'active'},
                     '2': {'type': 'FIXED', 'value': 18}
                 }
             )
 
-        Example 3 - CREATE or INSERT:
+        Example 3 - Multi-statement request:
             result = client.execute_statement(
-                "INSERT INTO logs (message, level) VALUES ('System started', 'INFO')"
+                "CREATE TABLE test (id INT); INSERT INTO test VALUES (1), (2);"
             )
-            print(result)  # Check success status
+
+        Example 4 - With specific role:
+            result = client.execute_statement(
+                "SELECT * FROM sensitive_data",
+                role='ACCOUNTADMIN'
+            )
+
+        Response Status Codes:
+            - 200: Query completed successfully
+            - 202: Query still executing (poll with get_statement_status)
+            - 422: Query failed (check error in response)
+            - 429: Rate limited (implement retry with backoff)
 
         Reference: https://docs.snowflake.com/en/developer-guide/sql-api/submitting-requests
         """
         payload = {
             'statement': sql,
-            'timeout': timeout,
             'database': self.database,
             'schema': self.schema,
             'warehouse': self.warehouse
         }
 
+        # Add optional fields only if provided
+        if timeout is not None:
+            payload['timeout'] = timeout
+
         if bindings:
             payload['bindings'] = bindings
+
+        if role or self.role:
+            payload['role'] = role if role else self.role
 
         try:
             response = requests.post(
                 self.base_url,
                 headers=self._get_headers(),
                 json=payload,
-                timeout=timeout + 10
+                timeout=(timeout + 10) if timeout else None
             )
-            response.raise_for_status()
-            return response.json()
+
+            # Handle different HTTP status codes
+            if response.status_code == 200:
+                # Success - query completed
+                return response.json()
+            elif response.status_code == 202:
+                # Query still running
+                return response.json()
+            elif response.status_code == 422:
+                # Query failed
+                return {**response.json(), 'error': 'Query execution failed', 'status_code': 422}
+            elif response.status_code == 429:
+                # Rate limited
+                return {'error': 'Rate limited', 'status_code': 429, 'message': 'Retry with backoff'}
+            else:
+                response.raise_for_status()
+                return response.json()
 
         except requests.exceptions.RequestException as e:
             return {
@@ -235,6 +310,62 @@ class SnowflakeAPIClient:
 
         try:
             response = requests.post(
+                url,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            return {
+                'error': str(e),
+                'success': False
+            }
+
+    def get_result_partition(self, statement_handle: str, partition: int = 0) -> Dict[str, Any]:
+        """
+        Retrieve a specific partition of query results
+
+        Large result sets are split into partitions by Snowflake. Use this to retrieve
+        additional partitions beyond the first one (which is included in the initial response).
+
+        Args:
+            statement_handle: Handle/ID from the statement execution
+            partition: Partition number to retrieve (0-indexed, 0 is included in initial response)
+
+        Returns:
+            Dict containing the partition data
+
+        Example:
+            # Execute a query that returns lots of data
+            result = client.execute_statement("SELECT * FROM large_table")
+            handle = result['statementHandle']
+
+            # Check if there are multiple partitions
+            partition_info = result.get('resultSetMetaData', {}).get('partitionInfo', [])
+            print(f"Total partitions: {len(partition_info)}")
+
+            # Get partition 1 (partition 0 is in the initial result)
+            if len(partition_info) > 1:
+                partition_1 = client.get_result_partition(handle, partition=1)
+                print(partition_1['data'])
+
+            # Get partition 2
+            if len(partition_info) > 2:
+                partition_2 = client.get_result_partition(handle, partition=2)
+                print(partition_2['data'])
+
+        Note:
+            - Partition 0 is included in the initial execute_statement() response
+            - Use this method only for partitions 1, 2, 3, etc.
+            - Check 'partitionInfo' in resultSetMetaData to see how many partitions exist
+
+        Reference: https://docs.snowflake.com/en/developer-guide/sql-api/handling-responses
+        """
+        url = f"{self.base_url}/{statement_handle}?partition={partition}"
+
+        try:
+            response = requests.get(
                 url,
                 headers=self._get_headers()
             )
