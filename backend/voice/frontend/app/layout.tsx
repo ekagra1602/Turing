@@ -13,6 +13,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <></>
       <body style={{ background: 'transparent' }} className="overflow-hidden">{children}</body>
     </html>
   );
