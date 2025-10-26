@@ -20,6 +20,8 @@ except:
     SNOWFLAKE_AVAILABLE = False
     from visual_memory import VisualWorkflowMemory
 
+# Import hardcoded templates
+from workflow_templates import WORKFLOW_TEMPLATES
 
 class SemanticWorkflowMatcher:
     """
@@ -124,21 +126,42 @@ class SemanticWorkflowMatcher:
         # Get ALL workflows (fine for 3-5 workflows)
         workflows = self.memory.list_workflows(status='ready')
         
-        if not workflows:
-            print("⚠️  No ready workflows found")
+        # Add hardcoded templates to the workflow list
+        # Convert templates to workflow format
+        template_workflows = []
+        for template_name, semantic_actions in WORKFLOW_TEMPLATES.items():
+            template_workflow = {
+                'workflow_id': f'template_{template_name.replace(" ", "_")}',
+                'name': template_name,
+                'description': template_name,  # Description is the template name
+                'tags': ['template', 'hardcoded'],
+                'semantic_actions': semantic_actions,
+                'is_template': True
+            }
+            template_workflows.append(template_workflow)
+        
+        # Combine templates with learned workflows
+        # Templates go first so they have priority in matching
+        all_workflows = template_workflows + workflows
+        
+        if not all_workflows:
+            print("⚠️  No workflows or templates found")
             return []
         
         # Create workflow list for Gemini with rich context
         workflow_list = []
-        for i, wf in enumerate(workflows, 1):
+        for i, wf in enumerate(all_workflows, 1):
             name = wf.get('workflow_name', wf.get('name', 'Unnamed'))
             desc = wf.get('workflow_description', wf.get('description', ''))
             tags = wf.get('tags', [])
+            is_template = wf.get('is_template', False)
             
             workflow_info = f"{i}. {name}"
-            if desc:
+            if desc and desc != name:
                 workflow_info += f": {desc}"
-            if tags:
+            if is_template:
+                workflow_info += " [HARDCODED TEMPLATE]"
+            elif tags:
                 workflow_info += f" (tags: {', '.join(tags)})"
             
             workflow_list.append(workflow_info)
@@ -186,8 +209,8 @@ Rules:
             results = []
             for rank in rankings:
                 wf_num = rank.get('workflow_num')
-                if wf_num and 1 <= wf_num <= len(workflows):
-                    workflow = workflows[wf_num - 1]
+                if wf_num and 1 <= wf_num <= len(all_workflows):
+                    workflow = all_workflows[wf_num - 1]
                     similarity = rank.get('similarity', 0.5)
                     results.append((workflow, float(similarity)))
             

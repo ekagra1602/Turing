@@ -417,7 +417,13 @@ Workflow: "{workflow_name}"
 Description: "{workflow_desc}"
 
 Based on the request, extract any specific values the user wants to use.
-For example:
+
+IMPORTANT: For email-related workflows, use these EXACT parameter names:
+- "recipient_email": The email address to send to
+- "email_subject": The subject line of the email
+- "email_body": The body/content of the email
+
+For other workflows, extract values like:
 - Ticket numbers (e.g., "ABC-123")
 - Company names (e.g., "Google")
 - Course names (e.g., "Machine Learning")

@@ -15,7 +15,6 @@ from PIL import Image
 
 from gemini_computer_use import GeminiComputerUse
 from visual_memory import VisualWorkflowMemory
-from workflow_templates import merge_templates_with_learned
 
 
 class GeminiWorkflowExecutor:
@@ -61,30 +60,22 @@ class GeminiWorkflowExecutor:
         if self.verbose:
             print("✅ Gemini Workflow Executor initialized")
             if self.workflows_by_intention:
-                from workflow_templates import list_available_templates
-                template_count = len(list_available_templates())
-                learned_count = len(self.workflows_by_intention) - template_count
-                
-                print(f"   📚 Total workflows: {len(self.workflows_by_intention)}")
-                print(f"      - {template_count} hardcoded templates")
-                print(f"      - {learned_count} learned workflows")
-                print(f"\n   Available workflows:")
-                for intention in list(self.workflows_by_intention.keys())[:8]:
+                print(f"   Loaded {len(self.workflows_by_intention)} workflows:")
+                for intention in list(self.workflows_by_intention.keys())[:5]:
                     print(f"     • {intention}")
-                if len(self.workflows_by_intention) > 8:
-                    print(f"     ... and {len(self.workflows_by_intention) - 8} more")
+                if len(self.workflows_by_intention) > 5:
+                    print(f"     ... and {len(self.workflows_by_intention) - 5} more")
 
     def _load_all_workflows(self) -> Dict[str, List[Dict]]:
         """
         Load all ready workflows as a dictionary mapping intention -> semantic_actions
-        Merges hardcoded templates with learned workflows (learned takes precedence)
 
         Returns:
             Dict where:
                 - Key: overall_intention/description from workflow
                 - Value: list of semantic_actions
         """
-        learned_workflows = {}
+        workflows_dict = {}
 
         try:
             # Get all ready workflows
@@ -106,7 +97,7 @@ class GeminiWorkflowExecutor:
                         intention = full_workflow.get('description', workflow.get('name', 'Unknown'))
 
                         # Store in dictionary
-                        learned_workflows[intention] = semantic_actions
+                        workflows_dict[intention] = semantic_actions
 
                 except Exception as e:
                     if self.verbose:
@@ -116,17 +107,12 @@ class GeminiWorkflowExecutor:
             if self.verbose:
                 print(f"⚠️  Error loading workflows: {e}")
 
-        # Merge hardcoded templates with learned workflows
-        # Learned workflows override templates if there's a conflict
-        all_workflows = merge_templates_with_learned(learned_workflows)
-        
-        return all_workflows
+        return workflows_dict
 
     def reload_workflows(self):
         """
         Reload all workflows from memory.
         Call this after recording new workflows to update the dictionary.
-        Templates are always included automatically.
         """
         if self.verbose:
             print("🔄 Reloading workflows...")
@@ -138,13 +124,7 @@ class GeminiWorkflowExecutor:
         self.gemini.system_prompt = self.gemini._build_system_prompt()
 
         if self.verbose:
-            from workflow_templates import list_available_templates
-            template_count = len(list_available_templates())
-            learned_count = len(self.workflows_by_intention) - template_count
-            
             print(f"✅ Reloaded {len(self.workflows_by_intention)} workflows")
-            print(f"   - {template_count} hardcoded templates")
-            print(f"   - {learned_count} learned workflows")
             print("   System prompt updated")
 
     def get_workflow_by_intention(self, intention_query: str) -> Optional[List[Dict]]:
@@ -229,34 +209,25 @@ class GeminiWorkflowExecutor:
             print()
         
         # Load full workflow data
-        # For templates, use the workflow object directly (they're not in storage)
-        if workflow.get('is_template', False):
-            full_workflow = workflow
-            if self.verbose:
-                print("   📝 Using hardcoded template")
-        else:
-            try:
-                full_workflow = self.memory.get_workflow(workflow_id)
-            except Exception as e:
-                print(f"❌ Could not load workflow: {e}")
-                return False, []
+        try:
+            full_workflow = self.memory.get_workflow(workflow_id)
+        except Exception as e:
+            print(f"❌ Could not load workflow: {e}")
+            return False, []
         
         steps = full_workflow.get('steps', [])
-        semantic_actions = full_workflow.get('semantic_actions', [])
         
-        # Templates have semantic_actions but no steps
-        if not steps and not semantic_actions:
-            print("⚠️  Workflow has no steps or semantic actions")
+        if not steps:
+            print("⚠️  Workflow has no steps")
             return False, []
         
         if self.verbose:
-            if steps:
-                print(f"Total steps: {len(steps)}")
-            if semantic_actions:
-                print(f"Total semantic actions: {len(semantic_actions)}")
+            print(f"Total steps: {len(steps)}")
             print()
         
         # 🚀 USE SEMANTIC ACTIONS if available, otherwise fall back to raw steps
+        semantic_actions = full_workflow.get('semantic_actions', [])
+        
         if semantic_actions:
             if self.verbose:
                 print("✨ Using semantic actions (intelligent execution)\n")
@@ -337,101 +308,32 @@ class GeminiWorkflowExecutor:
         """
         Execute semantic actions using Gemini's intelligence with CONTEXT-AWARE GENERALIZATION
         
-        For TEMPLATES: Execute actions more directly
-        For LEARNED workflows: Use as context to adapt to new situations
+        Instead of blindly replaying recorded actions, we use them as context to understand
+        the user's intent and adapt intelligently to new situations.
         
         Args:
-            semantic_actions: List of semantic action dicts
+            semantic_actions: List of semantic action dicts (used as context)
             parameters: Parameter substitutions
             confirm_steps: Ask before each step
         
         Returns:
             True if all successful
         """
-        # Check if this is a hardcoded template
-        is_template = self.current_workflow.get('is_template', False)
+        if self.verbose:
+            print("\n🧠 INTELLIGENT GENERALIZATION MODE")
+            print("   Using recorded workflow as CONTEXT, not exact replay")
+            print("   Gemini will adapt to current screen and user intent\n")
         
-        if is_template:
-            if self.verbose:
-                print("\n📝 TEMPLATE EXECUTION MODE")
-                print("   Executing hardcoded template steps directly\n")
-            
-            # For templates, execute actions more directly
-            return self._execute_template_actions(
-                semantic_actions=semantic_actions,
-                parameters=parameters,
-                confirm_steps=confirm_steps
-            )
-        else:
-            if self.verbose:
-                print("\n🧠 INTELLIGENT GENERALIZATION MODE")
-                print("   Using recorded workflow as CONTEXT, not exact replay")
-                print("   Gemini will adapt to current screen and user intent\n")
-            
-            # Get the user's original request from the workflow context
-            user_request = self._get_user_request_from_context(parameters)
-            
-            # Use Gemini to understand the intent and plan actions based on context
-            return self._execute_with_generalization(
-                user_request=user_request,
-                context_actions=semantic_actions,
-                parameters=parameters,
-                confirm_steps=confirm_steps
-            )
-    
-    def _execute_template_actions(self,
-                                   semantic_actions: List[Dict],
-                                   parameters: Dict[str, str] = None,
-                                   confirm_steps: bool = False) -> bool:
-        """
-        Execute hardcoded template actions more directly.
-        This executes the template steps in order with parameter substitution.
+        # Get the user's original request from the workflow context
+        user_request = self._get_user_request_from_context(parameters)
         
-        Args:
-            semantic_actions: List of template actions
-            parameters: Parameter substitutions
-            confirm_steps: Ask before each step
-        
-        Returns:
-            True if all successful
-        """
-        all_success = True
-        
-        for i, action in enumerate(semantic_actions, 1):
-            self.current_step_number = i
-            
-            if self.verbose:
-                print(f"\n📍 Template Step {i}/{len(semantic_actions)}")
-                print("-" * 70)
-                print(f"Action: {action.get('semantic_type', 'unknown')}")
-                print(f"Description: {action.get('description', 'N/A')}")
-            
-            # Confirm before execution?
-            if confirm_steps:
-                response = input(f"Execute step {i}? [y/n/s(kip)/q(uit)]: ").lower()
-                if response == 'n' or response == 'q':
-                    print("⏸️  Execution stopped by user")
-                    all_success = False
-                    break
-                elif response == 's':
-                    print("⏭️  Skipping step")
-                    continue
-            
-            # Execute the semantic action with parameter substitution
-            success, result = self._execute_semantic_action(action, parameters)
-            self.execution_results.append(result)
-            
-            if not success:
-                print(f"⚠️  Step {i} encountered an issue")
-                
-                if confirm_steps or input("Continue with next step? [y/n]: ").lower() != 'y':
-                    all_success = False
-                    break
-            
-            # Brief pause between steps
-            time.sleep(0.5)
-        
-        return all_success
+        # Use Gemini to understand the intent and plan actions based on context
+        return self._execute_with_generalization(
+            user_request=user_request,
+            context_actions=semantic_actions,
+            parameters=parameters,
+            confirm_steps=confirm_steps
+        )
     
     def _get_user_request_from_context(self, parameters: Dict[str, str] = None) -> str:
         """Extract the user's request from parameters and workflow context"""
@@ -1103,7 +1005,7 @@ Be STRICT - only mark complete if the user's specific request is fully satisfied
         
         # If primary failed and it's a high priority action, use ADAPTIVE RE-PLANNING
         if priority == 'high' and action_type in ['click', 'type', 'navigate']:
-            if self.verbose:
+        if self.verbose:
                 print(f"🧠 HIGH PRIORITY FAILED - Using ADAPTIVE RE-PLANNING")
             
             # This is the key: we're not blind, we adapt!
@@ -1210,8 +1112,8 @@ Answer briefly:
                 if self.verbose:
                     print(f"   ✅ Cursor ready: {check.get('active_app', 'unknown app')}")
                 return True
-            else:
-                if self.verbose:
+        else:
+            if self.verbose:
                     print(f"   ⚠️  Cursor issue: {check.get('issue', 'unknown')}")
                     print(f"   💡 Quick fix: {check.get('quick_fix', 'N/A')}")
                 
@@ -1394,11 +1296,11 @@ Answer briefly:
                 print(f"   🎯 Strategy {i+1}: {variation}")
             
             success = self.gemini.click(variation)
-            if success:
+        if success:
                 if self.verbose:
                     print(f"   ✅ SUCCESS with: {variation}")
-                return True
-            
+            return True
+        
             # Brief pause between attempts
             time.sleep(0.3)
         
@@ -1529,32 +1431,12 @@ Answer briefly:
             # Use Gemini to get exact coordinates
             screenshot = np.array(pyautogui.screenshot())
             
-            # Calculate scaling factor for Retina/HiDPI displays
-            from gemini_computer_use import GeminiComputerUse
-            scale_x, scale_y = GeminiComputerUse.get_screen_scaling(screenshot)
-            
-            coordinate_prompt = f"""Find the exact BOUNDING BOX for: "{target}"
+            coordinate_prompt = f"""Find the exact coordinates for: "{target}"
 
-IMPORTANT: Return a BOUNDING BOX in NORMALIZED 0-999 coordinates:
-- (0, 0) is top-left corner
-- (999, 999) is bottom-right corner  
-- Provide the box that covers the entire clickable element
+Return ONLY the coordinates in this format:
+x,y
 
-Respond in JSON format:
-{{
-    "found": true/false,
-    "bbox": {{
-        "x1": <top-left x>,
-        "y1": <top-left y>,
-        "x2": <bottom-right x>,
-        "y2": <bottom-right y>
-    }}
-}}
-
-If not found, return: {{"found": false}}
-
-Example: Button at top-center
-{{"found": true, "bbox": {{"x1": 450, "y1": 40, "x2": 550, "y2": 80}}}}"""
+If not found, return: not_found"""
 
             from google.genai.types import GenerateContentConfig
             response = self.gemini.client.models.generate_content(
@@ -1579,59 +1461,31 @@ Example: Button at top-center
                 )
             )
             
-            content = response.text.strip()
+            coords_text = response.text.strip()
             
-            # Extract JSON
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+            if "not_found" in coords_text.lower():
+                if self.verbose:
+                    print(f"      ❌ Coordinates not found")
+                return False
             
+            # Parse coordinates
             try:
-                result = json.loads(content)
-                
-                if not result.get('found', False):
-                    if self.verbose:
-                        print(f"      ❌ Element not found")
-                    return False
-                
-                # Extract bounding box
-                bbox = result.get('bbox', {})
-                x1 = int(bbox.get('x1', 0))
-                y1 = int(bbox.get('y1', 0))
-                x2 = int(bbox.get('x2', 999))
-                y2 = int(bbox.get('y2', 999))
-                
-                # Calculate CENTER of bounding box
-                center_x = (x1 + x2) // 2
-                center_y = (y1 + y2) // 2
-                
-                # Convert from normalized (0-999) to actual screen pixels
-                from gemini_computer_use import GeminiComputerUse
-                screen_size = pyautogui.size()
-                click_x, click_y = GeminiComputerUse.denormalize_coordinates(
-                    center_x, center_y,
-                    screen_size.width, screen_size.height
-                )
+                x, y = map(int, coords_text.split(','))
                 
                 if self.verbose:
-                    print(f"      📦 Bounding box: ({x1}, {y1}) → ({x2}, {y2})")
-                    print(f"      📍 Center: ({center_x}, {center_y}) normalized")
-                    print(f"      🎯 Click target: ({click_x}, {click_y}) on {screen_size.width}x{screen_size.height} screen")
-                    print(f"      🖱️  Clicking at center ({click_x}, {click_y})")
+                    print(f"      📍 Clicking at coordinates: ({x}, {y})")
                 
-                # Click at center of bounding box
-                pyautogui.click(click_x, click_y)
+                # Click at exact coordinates
+                pyautogui.click(x, y)
                 time.sleep(0.5)
                 
                 if self.verbose:
-                    print(f"      ✅ Bounding box click successful")
+                    print(f"      ✅ Coordinate click successful")
                 return True
                 
-            except (ValueError, json.JSONDecodeError) as e:
+            except ValueError:
                 if self.verbose:
-                    print(f"      ❌ Failed to parse response: {e}")
-                    print(f"      Response: {content}")
+                    print(f"      ❌ Invalid coordinates: {coords_text}")
                 return False
             
         except Exception as e:
@@ -1979,20 +1833,20 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
             if self.verbose:
                 print(f"   🔄 Falling back to variation attempts...")
             
-            target_variations = [
-                f"button {target}",
-                f"link {target}",
+        target_variations = [
+            f"button {target}",
+            f"link {target}",
                 f"card {target}",
-                target.lower(),
-            ]
-            
-            for variation in target_variations:
-                if self.verbose:
+            target.lower(),
+        ]
+        
+        for variation in target_variations:
+            if self.verbose:
                     print(f"   Trying: {variation}")
-                success = self.gemini.click(variation)
-                if success:
-                    return True
-            
+            success = self.gemini.click(variation)
+            if success:
+                return True
+        
             return False
     
     def _execute_robust_type(self, value: str, target: str) -> bool:
@@ -2221,10 +2075,6 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
 
             elif semantic_type == 'wait':
                 success = self._execute_wait(action_with_params)
-            
-            elif semantic_type == 'keyboard_shortcut':
-                shortcut = action_with_params.get('value')
-                success = self._execute_keyboard_shortcut(shortcut)
 
             else:
                 if self.verbose:
@@ -2251,8 +2101,8 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
         # Create a copy
         action_copy = action.copy()
         
-        # Apply substitutions to target (only if target is a string)
-        if 'target' in action_copy and isinstance(action_copy['target'], str):
+        # Apply substitutions to target
+        if 'target' in action_copy:
             target = action_copy['target']
             for param_name, param_value in parameters.items():
                 # Replace parameter placeholders
@@ -2264,17 +2114,8 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
                         target = param_value
             action_copy['target'] = target
         
-        # Apply substitutions to value (only if value is a string)
-        # For numeric values (like wait durations), leave them as-is
-        if 'value' in action_copy and isinstance(action_copy['value'], str):
-            value = action_copy['value']
-            for param_name, param_value in parameters.items():
-                # Replace parameter placeholders like {recipient_email}
-                value = value.replace(f"{{{param_name}}}", param_value)
-            action_copy['value'] = value
-        
-        # Apply substitutions to text (only if text is a string)
-        if 'text' in action_copy and isinstance(action_copy['text'], str):
+        # Apply substitutions to text
+        if 'text' in action_copy:
             text = action_copy['text']
             for param_name, param_value in parameters.items():
                 text = text.replace(f"{{{param_name}}}", param_value)
@@ -2293,32 +2134,16 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
         if self.verbose:
             print(f"🚀 Opening application: {app_name}")
         
+        # Use Raycast (Option+Space) instead of Spotlight
         import pyautogui
-        
-        # CRITICAL: Minimize terminal first to prevent typing into it
-        try:
-            if self.verbose:
-                print(f"   📱 Minimizing terminal window first...")
-            pyautogui.hotkey('command', 'm')  # Minimize current window (terminal)
-            time.sleep(0.8)  # Wait for minimize animation
-        except:
-            pass
-        
-        # Now open Raycast
-        if self.verbose:
-            print(f"   🔍 Opening Raycast launcher...")
         pyautogui.hotkey('option', 'space')  # Raycast shortcut
-        time.sleep(1.2)  # LONGER wait for Raycast to fully open and be ready for input
+        time.sleep(0.7)  # Wait for Raycast to open
         
-        # Type app name with longer interval for reliability
-        if self.verbose:
-            print(f"   ⌨️  Typing: {app_name}")
-        pyautogui.write(app_name, interval=0.08)  # Slower typing for reliability
-        time.sleep(0.8)  # Wait for search results to appear
+        # Type app name
+        pyautogui.write(app_name, interval=0.05)
+        time.sleep(0.5)  # Wait for results
         
         # Press enter to open
-        if self.verbose:
-            print(f"   ⏎ Pressing Enter to launch...")
         pyautogui.press('enter')
         time.sleep(3.0)  # Wait for app to fully open and become active
         
@@ -2326,8 +2151,6 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
         if app_name.lower() in ['brave browser', 'brave', 'chrome', 'safari']:
             # For browsers, try to click on the address bar area to ensure focus
             try:
-                if self.verbose:
-                    print(f"   🎯 Clicking address bar to ensure browser focus...")
                 # Click in the top area where address bar typically is
                 pyautogui.click(500, 100)  # Top center of screen
                 time.sleep(0.5)
