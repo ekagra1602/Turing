@@ -1,0 +1,10 @@
+# LiveKit Agents Framework
+livekit-agents[silero,turn-detector]~=1.2
+livekit-plugins-noise-cancellation~=0.2
+
+# AI Plugins
+livekit-plugins-groq~=1.2        # Groq (STT + LLM)
+livekit-plugins-elevenlabs~=1.2  # ElevenLabs (TTS)
+
+# Environment management
+python-dotenv~=1.0
