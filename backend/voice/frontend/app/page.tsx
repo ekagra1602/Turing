@@ -199,7 +199,7 @@ export default function Home() {
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2.5 z-20 drag-region">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
-            <h1 className="text-[10px] font-semibold text-white/95 tracking-wider">AGENTFLOW</h1>
+            <h1 className="text-[10px] font-semibold text-white/95 tracking-wider">TURING</h1>
           </div>
           <div className="flex gap-1.5 no-drag">
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-700/60 hover:bg-yellow-500/60 transition-colors cursor-pointer"></div>
