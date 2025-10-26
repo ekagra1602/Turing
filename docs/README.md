@@ -48,6 +48,9 @@ That's AgentFlow.
 
 ## 🏗️ Architecture
 
+<img width="6821" height="2704" alt="image" src="https://github.com/user-attachments/assets/f72f263a-7462-4162-9c60-3df32068a741" />
+
+
 ```
 ┌─────────────────────────────────────────────┐
 │           User Interface                     │
