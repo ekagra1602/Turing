@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 interface VoiceOrbProps {
   audioLevel: number; // 0-1 scale
@@ -13,118 +14,123 @@ export default function VoiceOrb({ audioLevel, isListening, isSpeaking }: VoiceO
   const [glowIntensity, setGlowIntensity] = useState(0);
 
   useEffect(() => {
-    // Map audio level to glow intensity
     setGlowIntensity(audioLevel * 100);
   }, [audioLevel]);
 
   // Calculate orb size based on audio level
-  const baseSize = 200;
-  const dynamicSize = baseSize + (audioLevel * 80);
+  const baseSize = 350;
+  const dynamicSize = baseSize + (audioLevel * 100);
 
-  // Color changes based on state
-  const getOrbColor = () => {
-    if (isSpeaking) return "rgba(16, 185, 129, 0.6)"; // Green when agent speaks
-    if (isListening) return "rgba(59, 130, 246, 0.6)"; // Blue when listening
-    return "rgba(99, 102, 241, 0.4)"; // Purple idle state
-  };
+  // Intensity multiplier when speaking/listening
+  const intensity = isSpeaking ? 1.4 : isListening ? 1.2 : 0.9;
 
-  const orbColor = getOrbColor();
+  // Only animate when active
+  const isActive = isSpeaking || isListening;
 
   return (
-    <div className="relative flex items-center justify-center">
-      {/* Outer glow rings */}
+    <div className="relative flex items-center justify-center w-full h-screen">
+      {/* Outer glow layer - only animates when speaking/listening */}
       <motion.div
         className="absolute rounded-full"
         style={{
-          width: dynamicSize + 100,
-          height: dynamicSize + 100,
-          background: `radial-gradient(circle, ${orbColor} 0%, transparent 70%)`,
-          filter: `blur(${20 + glowIntensity / 5}px)`,
+          width: dynamicSize + 120,
+          height: dynamicSize + 120,
+          background: `radial-gradient(circle, rgba(100, 150, 255, ${0.25 * intensity}) 0%, rgba(70, 120, 200, ${0.12 * intensity}) 50%, transparent 75%)`,
+          filter: `blur(${50 + glowIntensity / 2}px)`,
         }}
-        animate={{
-          scale: [1, 1.1, 1],
-          opacity: [0.3, 0.5, 0.3],
+        animate={isActive ? {
+          scale: [1, 1.08, 1],
+          opacity: [0.5, 0.8, 0.5],
+        } : {
+          scale: 1,
+          opacity: 0.4,
         }}
         transition={{
-          duration: 2,
-          repeat: Infinity,
+          duration: 2.5,
+          repeat: isActive ? Infinity : 0,
           ease: "easeInOut",
         }}
       />
 
-      {/* Middle ring */}
+      {/* Main orb container */}
       <motion.div
-        className="absolute rounded-full"
-        style={{
-          width: dynamicSize + 50,
-          height: dynamicSize + 50,
-          background: `radial-gradient(circle, ${orbColor} 0%, transparent 60%)`,
-          filter: `blur(${15 + glowIntensity / 10}px)`,
-        }}
-        animate={{
-          scale: [1, 1.15, 1],
-          opacity: [0.4, 0.6, 0.4],
-        }}
-        transition={{
-          duration: 1.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.2,
-        }}
-      />
-
-      {/* Core orb */}
-      <motion.div
-        className="relative rounded-full shadow-2xl"
+        className="relative"
         style={{
           width: dynamicSize,
           height: dynamicSize,
-          background: `radial-gradient(circle at 30% 30%, ${orbColor.replace('0.6', '0.9')}, ${orbColor.replace('0.6', '0.5')})`,
-          boxShadow: `0 0 ${40 + glowIntensity}px ${orbColor}, inset 0 0 ${20 + glowIntensity / 2}px rgba(255, 255, 255, 0.1)`,
         }}
         animate={{
-          scale: [1, 1 + (audioLevel * 0.2), 1],
+          scale: isActive ? [1, 1 + (audioLevel * 0.15), 1] : 1,
         }}
         transition={{
-          duration: 0.3,
-          ease: "easeOut",
+          duration: 0.5,
+          repeat: isActive ? Infinity : 0,
+          ease: "easeInOut",
         }}
       >
-        {/* Inner highlight */}
+        {/* Orb image container - circular crop */}
         <div
-          className="absolute top-1/4 left-1/4 w-1/3 h-1/3 rounded-full"
+          className="absolute inset-0"
           style={{
-            background: "radial-gradient(circle, rgba(255, 255, 255, 0.4), transparent)",
-            filter: "blur(20px)",
+            filter: `drop-shadow(0 0 ${50 + glowIntensity}px rgba(100, 150, 255, ${0.4 * intensity})) drop-shadow(0 0 ${90 + glowIntensity * 1.2}px rgba(70, 120, 200, ${0.25 * intensity}))`,
           }}
-        />
+        >
+          <div
+            className="absolute inset-0"
+            style={{
+              clipPath: 'circle(40% at 50% 50%)',
+            }}
+          >
+            {/* Scale up the image to hide dark background */}
+            <div
+              className="absolute"
+              style={{
+                top: '-20%',
+                left: '-20%',
+                width: '140%',
+                height: '140%',
+              }}
+            >
+              <Image
+                src="/orb.png"
+                alt="Voice Orb"
+                fill
+                className="object-contain"
+                style={{
+                  opacity: intensity,
+                }}
+                priority
+              />
+            </div>
+          </div>
+        </div>
 
-        {/* Animated particles */}
-        {isSpeaking && (
+        {/* Particles when active */}
+        {isActive && (
           <>
             {[...Array(8)].map((_, i) => (
               <motion.div
                 key={i}
                 className="absolute rounded-full"
                 style={{
-                  width: 4 + (audioLevel * 6),
-                  height: 4 + (audioLevel * 6),
-                  background: "rgba(255, 255, 255, 0.6)",
+                  width: 4 + (audioLevel * 5),
+                  height: 4 + (audioLevel * 5),
+                  background: `rgba(180, 210, 255, ${0.8 * intensity})`,
                   top: "50%",
                   left: "50%",
-                  transform: "translate(-50%, -50%)",
+                  boxShadow: `0 0 ${12 + audioLevel * 12}px rgba(150, 190, 255, 0.7)`,
                 }}
                 animate={{
-                  x: [0, Math.cos((i * Math.PI * 2) / 8) * (50 + audioLevel * 30)],
-                  y: [0, Math.sin((i * Math.PI * 2) / 8) * (50 + audioLevel * 30)],
-                  opacity: [0.8, 0],
-                  scale: [1, 0.5],
+                  x: [0, Math.cos((i * Math.PI * 2) / 8) * (dynamicSize * 0.42)],
+                  y: [0, Math.sin((i * Math.PI * 2) / 8) * (dynamicSize * 0.42)],
+                  opacity: [0.9, 0],
+                  scale: [1, 0.2],
                 }}
                 transition={{
-                  duration: 1,
+                  duration: 1.5,
                   repeat: Infinity,
                   ease: "easeOut",
-                  delay: i * 0.1,
+                  delay: i * 0.12,
                 }}
               />
             ))}
@@ -132,15 +138,15 @@ export default function VoiceOrb({ audioLevel, isListening, isSpeaking }: VoiceO
         )}
       </motion.div>
 
-      {/* Status indicator */}
+      {/* Status text */}
       <motion.div
-        className="absolute bottom-[-60px] text-center"
+        className="absolute bottom-[12%] text-center"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
       >
-        <p className="text-sm text-gray-400 font-medium">
-          {isSpeaking ? "AgentFlow is speaking..." : isListening ? "Listening..." : "Ready"}
+        <p className="text-sm text-gray-500 font-light tracking-wide">
+          {isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Ready"}
         </p>
       </motion.div>
     </div>
