@@ -57,7 +57,6 @@ agentflow/
 - Form filling? Use **Pro** + keyboard
 - Fast automation? **Basic** + instant mode
 - Tutorial/demo? **Pro** + smooth mode
-1
 ## More Help
 
 - `README.md` - Full documentation
