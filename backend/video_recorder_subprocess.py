@@ -152,12 +152,22 @@ class VideoRecorderProcess:
         pass
     
     def record_loop(self):
-        """Main recording loop"""
+        """Main recording loop - capture frames as fast as possible, rescale later"""
         frame_count = 0
         last_frame_time = time.time()
         
         # Check for stop signal file
         stop_signal = self.output_dir / self.recording_id / "STOP_SIGNAL"
+        
+        # Create MSS context once (reusing is MUCH faster!)
+        sct = None
+        if HAS_MSS:
+            import mss as mss_module
+            sct = mss_module.mss()
+            monitor = sct.monitors[1]
+        
+        print(f"   🎬 Starting recording loop")
+        print(f"   Target FPS: {self.fps} (video will be rescaled to match actual duration)")
         
         while self.is_recording:
             # Check for stop signal
@@ -167,7 +177,7 @@ class VideoRecorderProcess:
             
             current_time = time.time()
             
-            # Maintain FPS
+            # Simple frame rate limiting (don't need perfect timing, will rescale later)
             if current_time - last_frame_time < self.frame_interval:
                 time.sleep(0.001)
                 continue
@@ -176,12 +186,10 @@ class VideoRecorderProcess:
             
             # Capture frame
             try:
-                if HAS_MSS:
-                    with mss.mss() as sct:
-                        monitor = sct.monitors[1]
-                        screenshot = sct.grab(monitor)
-                        frame = np.array(screenshot)
-                        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                if HAS_MSS and sct:
+                    screenshot = sct.grab(monitor)
+                    frame = np.array(screenshot)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                 else:
                     screenshot = pyautogui.screenshot()
                     frame = np.array(screenshot)
@@ -203,7 +211,9 @@ class VideoRecorderProcess:
                 # Progress indicator every 100 frames
                 if frame_count % 100 == 0:
                     elapsed = time.time() - self.start_time
-                    print(f"   Recording: {elapsed:.1f}s ({frame_count} frames)")
+                    current_fps = frame_count / elapsed if elapsed > 0 else 0
+                    print(f"   Recording: {elapsed:.1f}s ({frame_count} frames, {current_fps:.1f} fps)")
+                    print(f"   Note: Video will be rescaled to match actual duration after recording")
                 
             except Exception as e:
                 print(f"⚠️  Frame capture error: {e}")
@@ -214,6 +224,10 @@ class VideoRecorderProcess:
         print(f"   Finalizing video...")
         self.video_writer.release()
         print(f"   Video writer released")
+        
+        # Close MSS context
+        if sct:
+            sct.close()
         
         self.mouse_listener.stop()
         self.keyboard_listener.stop()
@@ -237,7 +251,17 @@ class VideoRecorderProcess:
                 'fps': self.fps
             }, f, indent=2)
         
-        print(f"✅ Recording complete: {frame_count} frames, {len(self.events)} events")
+        # Final statistics
+        total_elapsed = time.time() - self.start_time
+        actual_fps = frame_count / total_elapsed if total_elapsed > 0 else 0
+        
+        print(f"✅ Recording complete!")
+        print(f"   Duration: {total_elapsed:.2f}s")
+        print(f"   Frames captured: {frame_count}")
+        print(f"   Average FPS: {actual_fps:.1f}")
+        print(f"   Events captured: {len(self.events)}")
+        print(f"   ")
+        print(f"   📹 Video will be automatically rescaled to match {total_elapsed:.2f}s duration")
 
 
 if __name__ == '__main__':

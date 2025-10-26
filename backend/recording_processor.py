@@ -84,7 +84,7 @@ class RecordingProcessor:
         api_key = os.getenv("GOOGLE_API_KEY")
         if api_key:
             genai.configure(api_key=api_key)
-            self.vlm_model = genai.GenerativeModel('gemini-1.5-flash')
+            self.vlm_model = genai.GenerativeModel('gemini-2.5-pro')
             self.use_vlm = True
         else:
             self.vlm_model = None
@@ -92,7 +92,7 @@ class RecordingProcessor:
         
         print("✅ Recording Processor initialized")
         if self.use_vlm:
-            print("   - VLM: enabled (Gemini 1.5 Flash)")
+            print("   - VLM: enabled (Gemini 2.5 Pro)")
     
     def process_recording(self,
                          recording_id: str,
@@ -139,10 +139,35 @@ class RecordingProcessor:
             raise RuntimeError(f"Could not open video: {video_path}")
         
         fps = video.get(cv2.CAP_PROP_FPS)
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        video_duration = total_frames / fps if fps > 0 else 0
         
         if show_progress:
             print(f"   FPS: {fps}")
-            print("\n🔍 Analyzing actions...")
+            print(f"   Video frames: {total_frames}")
+            print(f"   Video duration: {video_duration:.2f}s")
+            
+            # Check for timing mismatch
+            event_duration = events_data.get('duration', 0)
+            if abs(video_duration - event_duration) > 1.0:
+                speed_ratio = event_duration / video_duration if video_duration > 0 else 1.0
+                print(f"   ⚠️  TIMING MISMATCH DETECTED!")
+                print(f"   Event duration: {event_duration:.2f}s")
+                print(f"   Video duration: {video_duration:.2f}s")
+                print(f"   Speed ratio: {speed_ratio:.2f}x")
+                print(f"   This may cause frame extraction issues")
+        
+        # Analyze full video for overall intention (Gemini 2.0 Flash supports video!)
+        workflow_intention = None
+        if self.use_vlm:
+            if show_progress:
+                print("\n🎬 Analyzing full video for overall workflow intention...")
+            workflow_intention = self._analyze_full_video(video_path, metadata, show_progress)
+            if workflow_intention and show_progress:
+                print(f"\n✨ Workflow Goal: {workflow_intention}\n")
+        
+        if show_progress:
+            print("\n🔍 Analyzing individual actions...")
         
         # Process each event
         processed_actions: List[ProcessedAction] = []
@@ -348,13 +373,32 @@ class RecordingProcessor:
                       video: cv2.VideoCapture,
                       timestamp: float,
                       fps: float) -> Optional[np.ndarray]:
-        """Extract frame at specific timestamp"""
+        """Extract frame at specific timestamp with timing validation"""
         frame_number = int(timestamp * fps)
+        
+        # Get video properties for validation
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        video_duration = total_frames / fps if fps > 0 else 0
+        
+        # Clamp frame number to valid range
+        if frame_number >= total_frames:
+            frame_number = total_frames - 1
+        elif frame_number < 0:
+            frame_number = 0
+        
         video.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
         
         ret, frame = video.read()
         if ret:
             return frame
+        
+        # If frame extraction failed, try to get the last available frame
+        if total_frames > 0:
+            video.set(cv2.CAP_PROP_POS_FRAMES, total_frames - 1)
+            ret, frame = video.read()
+            if ret:
+                return frame
+        
         return None
     
     def _classify_element(self, text: str) -> str:
@@ -431,6 +475,85 @@ class RecordingProcessor:
                 pass
         
         return verification, wait_condition
+    
+    def _analyze_full_video(self,
+                           video_path: str,
+                           metadata: Dict,
+                           show_progress: bool) -> Optional[str]:
+        """
+        Upload and analyze the full video with Gemini to understand overall workflow intention.
+        
+        Returns:
+            High-level description of what the workflow accomplishes
+        """
+        if not self.use_vlm:
+            return None
+        
+        try:
+            # Upload video to Gemini Files API
+            video_file = genai.upload_file(path=video_path)
+            
+            # Wait for processing
+            import time
+            while video_file.state.name == "PROCESSING":
+                if show_progress:
+                    print("   ⏳ Video processing...")
+                time.sleep(2)
+                video_file = genai.get_file(video_file.name)
+            
+            if video_file.state.name == "FAILED":
+                print(f"   ⚠️  Video upload failed")
+                return None
+            
+            # Analyze with Gemini
+            prompt = f"""You are analyzing a screen recording of a computer workflow.
+
+Workflow Name: {metadata.get('name', 'Unknown')}
+Duration: {metadata.get('duration', 0):.1f} seconds
+
+Watch the entire video and provide:
+1. OVERALL GOAL: What is the user trying to accomplish? (one sentence)
+2. KEY STEPS: What are ALL of the main steps in this workflow?
+3. CONTEXT: What application(s) or website(s) are being used?
+
+Be specific and clear. Focus on the user's intent, not individual clicks.
+
+Format as JSON:
+{{
+  "goal": "Overall goal in one sentence",
+  "key_steps": ["Step 1", "Step 2", "..."],
+  "context": "Applications/websites used"
+}}"""
+            
+            response = self.vlm_model.generate_content([video_file, prompt])
+            
+            # Parse response
+            import re
+            json_match = re.search(r'\{[^}]+\}', response.text, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+                
+                # Format the output
+                goal = result.get('goal', '')
+                key_steps = result.get('key_steps', [])
+                context = result.get('context', '')
+                
+                output = f"{goal}"
+                if context:
+                    output += f" (using {context})"
+                if key_steps:
+                    output += "\n   Key Steps:"
+                    for i, step in enumerate(key_steps, 1):
+                        output += f"\n   {i}. {step}"
+                
+                return output
+            
+            return response.text if response.text else None
+            
+        except Exception as e:
+            if show_progress:
+                print(f"   ⚠️  Full video analysis failed: {e}")
+            return None
     
     def _analyze_action_with_vlm(self,
                                  event_type: str,

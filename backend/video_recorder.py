@@ -186,6 +186,16 @@ class ScreenVideoRecorder:
         print(f"   Events captured: {len(events_data.get('events', []))}")
         print(f"   Saved to: {recording_path}")
         
+        # Automatically rescale video to match actual duration using ffmpeg
+        print(f"\n🔄 Syncing video duration with events...")
+        try:
+            from video_rescaler_ffmpeg import rescale_video_to_duration
+            rescale_video_to_duration(recording_path, show_progress=True)
+        except Exception as e:
+            print(f"   ⚠️  Video rescaling failed: {e}")
+            print(f"   You can manually rescale later using:")
+            print(f"   python backend/video_rescaler_ffmpeg.py {self.recording_id if self.recording_id else recording_id}")
+        
         recording_id = self.recording_id
         self.recording_id = None
         self.start_time = None
