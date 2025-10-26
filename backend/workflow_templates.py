@@ -19,7 +19,105 @@ WORKFLOW_TEMPLATES: Dict[str, List[Dict]] = {
     # =========================================================================
     # EMAIL WORKFLOWS
     # =========================================================================
-    
+    "enter workday hours": [
+        {
+            "step_number": 1,
+            "semantic_type": "open_application",
+            "description": "Open Brave Browser",
+            "target": "Brave Browser",
+            "value": None,
+            "timestamp_seconds": 0.0,
+            "confidence": 1.0,
+            "is_parameterizable": False,
+            "parameter_name": None
+        },
+        {
+            "step_number": 2,
+            "semantic_type": "wait",
+            "description": "Wait for browser to fully open",
+            "target": None,
+            "value": "2.0",
+            "timestamp_seconds": 2.0,
+            "confidence": 1.0,
+            "is_parameterizable": False,
+            "parameter_name": None
+        },
+        {
+            "step_number": 3,
+            "semantic_type": "keyboard_shortcut",
+            "description": "Open new tab with Cmd+T",
+            "target": None,
+            "value": "cmd+t",
+            "timestamp_seconds": 2.5,
+            "confidence": 1.0,
+            "is_parameterizable": False,
+            "parameter_name": None
+        },
+        {
+            "step_number": 4,
+            "semantic_type": "keyboard_shortcut",
+            "description": "Focus address bar with Cmd+L",
+            "target": None,
+            "value": "cmd+l",
+            "timestamp_seconds": 3.0,
+            "confidence": 1.0,
+            "is_parameterizable": False,
+            "parameter_name": None
+        },
+        {
+            "step_number": 5,
+            "semantic_type": "type_text",
+            "description": "Type Workday URL in address bar",
+            "target": "address bar",
+            "value": "{workday_url}",
+            "timestamp_seconds": 3.5,
+            "confidence": 1.0,
+            "is_parameterizable": True,
+            "parameter_name": "workday_url"
+        },
+        {
+            "step_number": 6,
+            "semantic_type": "navigate",
+            "description": "Press Enter to navigate to Workday",
+            "target": "{workday_url}",
+            "value": "{workday_url}",
+            "timestamp_seconds": 4.0,
+            "confidence": 1.0,
+            "is_parameterizable": True,
+            "parameter_name": "workday_url"
+        },
+        {
+            "step_number": 7,
+            "semantic_type": "wait",
+            "description": "Wait for Workday to load",
+            "target": None,
+            "value": "3.0",
+            "timestamp_seconds": 7.0,
+            "confidence": 1.0,
+            "is_parameterizable": False,
+            "parameter_name": None
+        },
+        {
+            "step_number": 8,
+            "semantic_type": "use_recorded_workflow",
+            "description": "Use recorded workflow for Workday hours entry (parameterized)",
+            "target": "recorded_workflow_workflow_1761495396_1761495424_parameterized.json",  # <<< UPDATE THIS with your actual filename
+            "value": None,
+            "timestamp_seconds": 7.0,
+            "confidence": 1.0,
+            "is_parameterizable": True,
+            "parameter_name": "recorded_workflow_file",
+            "parameter_mappings": {
+                # Map placeholders in your recorded workflow to template parameters
+                # Update these based on what parameters you actually have
+                "HOURS": "hours",
+                "DATE": "date",
+                "PROJECT_CODE": "project_code",
+            }
+        }
+    ],
+
+
     "send email via gmail": [
         {
             "step_number": 1,

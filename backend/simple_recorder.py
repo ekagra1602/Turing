@@ -17,10 +17,13 @@ class SimpleRecorder:
     """Records exact coordinates and keystrokes"""
     
     def __init__(self):
-        self.recording = False
+        self.recording = True  # Start recording immediately
         self.actions: List[Dict[str, Any]] = []
-        self.start_time = None
-        self.last_action_time = None
+        self.start_time = time.time()
+        self.last_action_time = time.time()
+        
+        # Track last 4 characters to detect "stop"
+        self.recent_chars = []
         
         # Listeners
         self.mouse_listener = None
@@ -33,10 +36,11 @@ class SimpleRecorder:
         print("This tool records EXACT coordinates and keystrokes")
         print("for reliable workflow playback.")
         print()
+        print("🔴 RECORDING STARTED!")
+        print()
         print("Controls:")
-        print("  - Press F9 to START recording")
-        print("  - Press F10 to STOP recording")
-        print("  - Press ESC to quit")
+        print("  - Type 'stop' (lowercase) to STOP and save")
+        print("  - Press ESC to quit without saving")
         print()
         print("What gets recorded:")
         print("  ✓ Mouse clicks (exact pixel coordinates)")
@@ -45,6 +49,9 @@ class SimpleRecorder:
         print("  ✓ Timing between actions")
         print()
         print("=" * 70)
+        print()
+        print("Perform your workflow now...")
+        print("Type 'stop' when finished")
         print()
     
     def on_click(self, x, y, button, pressed):
@@ -71,20 +78,15 @@ class SimpleRecorder:
     
     def on_press(self, key):
         """Record keyboard presses"""
+        # Check for ESC to quit
+        try:
+            if key == keyboard.Key.esc:
+                print("\n👋 Exiting without saving...")
+                return False
+        except:
+            pass
+        
         if not self.recording:
-            # Check for control keys even when not recording
-            try:
-                if key == keyboard.Key.f9:
-                    self.start_recording()
-                    return
-                elif key == keyboard.Key.f10:
-                    self.stop_recording()
-                    return
-                elif key == keyboard.Key.esc:
-                    print("\n👋 Exiting...")
-                    return False
-            except:
-                pass
             return
         
         timestamp = time.time()
@@ -92,10 +94,7 @@ class SimpleRecorder:
         
         try:
             # Check for special keys
-            if key == keyboard.Key.f10:
-                self.stop_recording()
-                return
-            elif key == keyboard.Key.enter:
+            if key == keyboard.Key.enter:
                 action = {
                     "type": "key",
                     "key": "enter",
@@ -136,27 +135,23 @@ class SimpleRecorder:
                 self.actions.append(action)
                 self.last_action_time = timestamp
                 print(f"  ⌨️  Typed: '{key.char}' [delay: {delay:.2f}s]")
+                
+                # Track recent characters to detect "stop"
+                self.recent_chars.append(key.char)
+                if len(self.recent_chars) > 4:
+                    self.recent_chars.pop(0)
+                
+                # Check if last 4 characters spell "stop"
+                if ''.join(self.recent_chars) == 'stop':
+                    print("\n⏹️  Detected 'stop' command - stopping recording...")
+                    # Remove the last 4 actions (the "stop" typing)
+                    self.actions = self.actions[:-4]
+                    self.stop_recording()
+                    return False  # Stop the listener
         except AttributeError:
             # Handle special keys we don't care about
             pass
     
-    def start_recording(self):
-        """Start recording"""
-        if self.recording:
-            print("⚠️  Already recording!")
-            return
-        
-        self.recording = True
-        self.actions = []
-        self.start_time = time.time()
-        self.last_action_time = time.time()
-        
-        print("\n" + "=" * 70)
-        print("🔴 RECORDING STARTED")
-        print("=" * 70)
-        print("Perform your workflow actions now...")
-        print("Press F10 when done")
-        print()
     
     def stop_recording(self):
         """Stop recording and save"""
@@ -213,10 +208,6 @@ class SimpleRecorder:
     
     def run(self):
         """Run the recorder"""
-        print("🎧 Listening for keyboard/mouse input...")
-        print("Press F9 to start recording")
-        print()
-        
         # Start listeners
         with mouse.Listener(on_click=self.on_click) as mouse_listener, \
              keyboard.Listener(on_press=self.on_press) as keyboard_listener:
@@ -224,7 +215,7 @@ class SimpleRecorder:
             self.mouse_listener = mouse_listener
             self.keyboard_listener = keyboard_listener
             
-            # Keep running until ESC is pressed
+            # Keep running until "stop" is typed or ESC is pressed
             keyboard_listener.join()
 
 

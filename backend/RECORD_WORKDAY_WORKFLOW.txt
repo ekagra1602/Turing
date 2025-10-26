@@ -7,22 +7,14 @@ STEP 1: START THE RECORDER
 $ python simple_recorder.py
 
   Controls:
-  - Press F9 to START recording
-  - Press F10 to STOP recording
-  - Press ESC to quit
+  - Recording starts IMMEDIATELY
+  - Type 'stop' (lowercase) to STOP and save
+  - Press ESC to quit without saving
 
 
-STEP 2: PREPARE YOUR WORKDAY SESSION
--------------------------------------
-Before pressing F9:
-  ✓ Open Raycast (or have terminal ready)
-  ✓ Make sure Workday is accessible
-  ✓ Know what hours you'll enter (use dummy data)
-
-
-STEP 3: RECORD THE WORKFLOW
+STEP 2: RECORD THE WORKFLOW
 ----------------------------
-Press F9, then perform these actions:
+The recorder starts automatically! Perform these actions:
 
   1. Open Brave Browser (via Raycast)
      - Press Option+Space (Raycast)
@@ -43,10 +35,10 @@ Press F9, then perform these actions:
      - Enter project/task code if applicable
      - Click Submit/Save button
 
-  4. Press F10 to STOP recording
+  4. Type 'stop' to STOP recording
 
 
-STEP 4: NAME YOUR WORKFLOW
+STEP 3: NAME YOUR WORKFLOW
 ---------------------------
 When prompted:
   Workflow name: enter workday hours

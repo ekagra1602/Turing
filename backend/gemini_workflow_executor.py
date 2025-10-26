@@ -2401,20 +2401,6 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
         
         import pyautogui
         
-        # CRITICAL: Minimize terminal first to prevent typing into it
-        try:
-            if self.verbose:
-                print(f"   📱 Minimizing terminal window first...")
-            pyautogui.hotkey('command', 'm')  # Minimize current window (terminal)
-            time.sleep(0.8)  # Wait for minimize animation
-        except:
-            pass
-        
-        # Now open Raycast
-        if self.verbose:
-            print(f"   🔍 Opening Raycast launcher...")
-        pyautogui.hotkey('option', 'space')  # Raycast shortcut
-        time.sleep(1.2)  # LONGER wait for Raycast to fully open and be ready for input
         
         # Type app name with longer interval for reliability
         if self.verbose:

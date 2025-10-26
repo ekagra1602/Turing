@@ -13,7 +13,7 @@ Command:
 --------
 $ python simple_recorder.py
 
-Actions to perform after pressing F9:
+Recording starts immediately! Perform these actions:
 --------------------------------------
 1. Press Option+Space (Raycast)
 2. Type "brave browser"
@@ -29,7 +29,7 @@ Actions to perform after pressing F9:
 12. Press Tab or click next field
 13. Type project code if needed
 14. Click Submit/Save button
-15. Press F10 to STOP recording
+15. Type 'stop' to STOP recording
 
 When prompted:
   Workflow name: enter workday hours
@@ -190,7 +190,7 @@ The system will:
 
 1. Record:
    $ python simple_recorder.py
-   (Press F9, perform workflow, press F10)
+   (Recording starts immediately, perform workflow, type 'stop')
 
 2. Parameterize:
    $ python parameterize_workday.py workflows/recorded_workflow_enter_workday_hours_XXXXX.json
