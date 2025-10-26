@@ -3,34 +3,14 @@ Video-Based Workflow Recorder
 Records full screen video + timestamped events for post-processing
 """
 
-import cv2
 import time
 import json
-import threading
+import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime
-from dataclasses import dataclass, asdict
 
-import numpy as np
-from PIL import Image
 import pyautogui
-from pynput import mouse, keyboard
-
-
-@dataclass
-class ActionEvent:
-    """A single user action with precise timestamp"""
-    timestamp: float  # Seconds from recording start
-    event_type: str  # 'click', 'scroll', 'key_press', 'type'
-    data: Dict[str, Any]  # Event-specific data
-    
-    def to_dict(self):
-        return {
-            'timestamp': self.timestamp,
-            'event_type': self.event_type,
-            'data': self.data
-        }
 
 
 class ScreenVideoRecorder:
@@ -58,19 +38,8 @@ class ScreenVideoRecorder:
         self.recording_id = None
         self.start_time = None
         
-        # Video writer
-        self.video_writer = None
-        self.video_thread = None
-        
-        # Event logging
-        self.events: List[ActionEvent] = []
-        self.mouse_listener = None
-        self.keyboard_listener = None
-        
-        # Keyboard text buffer for typing detection
-        self.text_buffer = []
-        self.last_key_time = 0
-        self.typing_timeout = 0.5  # Group keys within 500ms as typing
+        # Subprocess for video recording (avoids tkinter conflicts)
+        self.recording_process = None
         
         print("✅ Video Recorder initialized")
         print(f"   - FPS: {fps}")
@@ -78,7 +47,7 @@ class ScreenVideoRecorder:
     
     def start_recording(self, recording_name: str, description: str = "") -> str:
         """
-        Start recording screen video and events.
+        Start recording screen video and events using subprocess (avoids tkinter conflicts).
         
         Returns:
             recording_id: Unique ID for this recording
@@ -104,42 +73,41 @@ class ScreenVideoRecorder:
         with open(recording_path / "metadata.json", 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        # Initialize video writer
+        # Get screen size
         screen_width, screen_height = pyautogui.size()
-        video_path = str(recording_path / "screen_recording.mp4")
+        video_path = recording_path / "screen_recording.mp4"
         
-        # Use H.264 codec for good compression
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        self.video_writer = cv2.VideoWriter(
-            video_path,
-            fourcc,
-            self.fps,
-            (screen_width, screen_height)
+        # Start subprocess for video recording (completely separate from tkinter)
+        subprocess_script = Path(__file__).parent / "video_recorder_subprocess.py"
+        
+        self.recording_process = subprocess.Popen(
+            [
+                'python',
+                str(subprocess_script),
+                self.recording_id,
+                str(self.output_dir),
+                str(self.fps)
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
         )
         
-        # Reset state
-        self.events = []
-        self.text_buffer = []
         self.start_time = time.time()
         self.is_recording = True
-        
-        # Start video recording thread
-        self.video_thread = threading.Thread(target=self._record_video_loop, daemon=True)
-        self.video_thread.start()
-        
-        # Start event listeners
-        self._start_event_listeners()
         
         print(f"\n✅ Recording started: {recording_name}")
         print(f"   ID: {self.recording_id}")
         print(f"   Resolution: {screen_width}x{screen_height}")
         print(f"   Video: {video_path}")
+        print(f"   Process PID: {self.recording_process.pid}")
         
         return self.recording_id
     
     def stop_recording(self) -> Optional[str]:
         """
-        Stop recording and save events log.
+        Stop recording by signaling subprocess and waiting for completion.
         
         Returns:
             recording_id: ID of completed recording
@@ -152,31 +120,53 @@ class ScreenVideoRecorder:
         
         self.is_recording = False
         
-        # Stop event listeners
-        self._stop_event_listeners()
-        
-        # Wait for video thread to finish
-        if self.video_thread:
-            self.video_thread.join(timeout=2.0)
-        
-        # Release video writer
-        if self.video_writer:
-            self.video_writer.release()
-            self.video_writer = None
-        
-        # Save events log
+        # Signal subprocess to stop by creating stop signal file
         recording_path = self.output_dir / self.recording_id
+        stop_signal = recording_path / "STOP_SIGNAL"
+        stop_signal.touch()
+        
+        # Wait for subprocess to finish
+        if self.recording_process:
+            print("   Waiting for video recording to finish...")
+            try:
+                # Wait up to 10 seconds for graceful shutdown
+                stdout, _ = self.recording_process.communicate(timeout=10)
+                print(f"   Subprocess exited with code: {self.recording_process.returncode}")
+                
+                # Print subprocess output for debugging
+                if stdout:
+                    print("\n   📹 Subprocess output:")
+                    for line in stdout.strip().split('\n'):
+                        print(f"      {line}")
+                    print()
+            except subprocess.TimeoutExpired:
+                print("   ⚠️  Subprocess didn't finish, terminating...")
+                self.recording_process.terminate()
+                try:
+                    stdout, _ = self.recording_process.communicate(timeout=2)
+                    if stdout:
+                        print("\n   📹 Subprocess output:")
+                        for line in stdout.strip().split('\n'):
+                            print(f"      {line}")
+                except:
+                    pass
+        
+        # Clean up stop signal
+        if stop_signal.exists():
+            stop_signal.unlink()
+        
+        # Load events from subprocess output
         events_path = recording_path / "events.json"
-        
-        events_data = {
-            'recording_id': self.recording_id,
-            'duration': time.time() - self.start_time,
-            'event_count': len(self.events),
-            'events': [event.to_dict() for event in self.events]
-        }
-        
-        with open(events_path, 'w') as f:
-            json.dump(events_data, f, indent=2)
+        if events_path.exists():
+            with open(events_path, 'r') as f:
+                events_data = json.load(f)
+        else:
+            print("   ⚠️  No events file found")
+            events_data = {
+                'recording_id': self.recording_id,
+                'duration': time.time() - self.start_time,
+                'events': []
+            }
         
         # Update metadata
         metadata_path = recording_path / "metadata.json"
@@ -184,193 +174,24 @@ class ScreenVideoRecorder:
             metadata = json.load(f)
         
         metadata['status'] = 'recorded'
-        metadata['duration'] = events_data['duration']
-        metadata['event_count'] = len(self.events)
+        metadata['duration'] = events_data.get('duration', 0)
+        metadata['event_count'] = len(events_data.get('events', []))
         metadata['completed'] = datetime.now().isoformat()
         
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
         print(f"✅ Recording stopped")
-        print(f"   Duration: {events_data['duration']:.1f}s")
-        print(f"   Events captured: {len(self.events)}")
+        print(f"   Duration: {events_data.get('duration', 0):.1f}s")
+        print(f"   Events captured: {len(events_data.get('events', []))}")
         print(f"   Saved to: {recording_path}")
         
         recording_id = self.recording_id
         self.recording_id = None
         self.start_time = None
+        self.recording_process = None
         
         return recording_id
-    
-    def _record_video_loop(self):
-        """Background thread that continuously captures screen frames"""
-        last_frame_time = time.time()
-        
-        while self.is_recording:
-            current_time = time.time()
-            
-            # Maintain target FPS
-            if current_time - last_frame_time < self.frame_interval:
-                time.sleep(0.001)  # Small sleep to avoid busy waiting
-                continue
-            
-            last_frame_time = current_time
-            
-            # Capture screen
-            try:
-                screenshot = pyautogui.screenshot()
-                frame = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-                self.video_writer.write(frame)
-            except Exception as e:
-                print(f"⚠️  Frame capture error: {e}")
-    
-    def _start_event_listeners(self):
-        """Start pynput listeners for mouse and keyboard"""
-        self.mouse_listener = mouse.Listener(
-            on_click=self._on_mouse_click,
-            on_scroll=self._on_mouse_scroll
-        )
-        self.mouse_listener.start()
-        
-        self.keyboard_listener = keyboard.Listener(
-            on_press=self._on_key_press,
-            on_release=self._on_key_release
-        )
-        self.keyboard_listener.start()
-    
-    def _stop_event_listeners(self):
-        """Stop all event listeners"""
-        if self.mouse_listener:
-            self.mouse_listener.stop()
-            self.mouse_listener = None
-        
-        if self.keyboard_listener:
-            self.keyboard_listener.stop()
-            self.keyboard_listener = None
-    
-    def _get_timestamp(self) -> float:
-        """Get timestamp relative to recording start"""
-        return time.time() - self.start_time
-    
-    def _on_mouse_click(self, x, y, button, pressed):
-        """Handle mouse click events"""
-        if not self.is_recording or not pressed:
-            return
-        
-        timestamp = self._get_timestamp()
-        
-        event = ActionEvent(
-            timestamp=timestamp,
-            event_type='click',
-            data={
-                'x': int(x),
-                'y': int(y),
-                'button': str(button).replace('Button.', '')
-            }
-        )
-        
-        self.events.append(event)
-        print(f"  📍 Click at ({x}, {y}) @ {timestamp:.2f}s")
-    
-    def _on_mouse_scroll(self, x, y, dx, dy):
-        """Handle mouse scroll events"""
-        if not self.is_recording:
-            return
-        
-        timestamp = self._get_timestamp()
-        
-        # Determine direction
-        if dy > 0:
-            direction = 'up'
-        elif dy < 0:
-            direction = 'down'
-        elif dx > 0:
-            direction = 'right'
-        else:
-            direction = 'left'
-        
-        event = ActionEvent(
-            timestamp=timestamp,
-            event_type='scroll',
-            data={
-                'x': int(x),
-                'y': int(y),
-                'direction': direction,
-                'dx': int(dx),
-                'dy': int(dy)
-            }
-        )
-        
-        self.events.append(event)
-        print(f"  📜 Scroll {direction} @ {timestamp:.2f}s")
-    
-    def _on_key_press(self, key):
-        """Handle keyboard press events"""
-        if not self.is_recording:
-            return
-        
-        timestamp = self._get_timestamp()
-        
-        # Handle special keys
-        try:
-            key_name = key.char
-            is_char = True
-        except AttributeError:
-            key_name = str(key).replace('Key.', '')
-            is_char = False
-        
-        # Group characters into typing events
-        if is_char:
-            current_time = time.time()
-            
-            # Start new typing event or add to existing
-            if current_time - self.last_key_time < self.typing_timeout:
-                self.text_buffer.append(key_name)
-            else:
-                # Flush previous typing event if exists
-                if self.text_buffer:
-                    self._flush_typing_event()
-                self.text_buffer = [key_name]
-            
-            self.last_key_time = current_time
-        
-        # Special keys (Enter, Tab, etc.) - always create separate events
-        elif key_name in ['enter', 'tab', 'esc', 'backspace', 'delete']:
-            # Flush any pending typing
-            if self.text_buffer:
-                self._flush_typing_event()
-            
-            event = ActionEvent(
-                timestamp=timestamp,
-                event_type='key_press',
-                data={'key': key_name}
-            )
-            
-            self.events.append(event)
-            print(f"  ⌨️  Key: {key_name} @ {timestamp:.2f}s")
-    
-    def _on_key_release(self, key):
-        """Handle keyboard release events"""
-        pass  # We only track presses
-    
-    def _flush_typing_event(self):
-        """Flush accumulated text buffer as a typing event"""
-        if not self.text_buffer:
-            return
-        
-        text = ''.join(self.text_buffer)
-        timestamp = self._get_timestamp()
-        
-        event = ActionEvent(
-            timestamp=timestamp,
-            event_type='type',
-            data={'text': text}
-        )
-        
-        self.events.append(event)
-        print(f"  ⌨️  Type: '{text}' @ {timestamp:.2f}s")
-        
-        self.text_buffer = []
     
     def get_recording_info(self, recording_id: str) -> Dict:
         """Get information about a recording"""

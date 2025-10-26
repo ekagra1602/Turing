@@ -14,7 +14,7 @@ if [ ! -d "backend" ]; then
     exit 1
 fi
 
-export GOOGLE_API_KEY="AIzaSyBrvr1gPUzMH-3Y9elAS2VDrIlUbP4dlMs"
+export GOOGLE_API_KEY="AIzaSyD8c-yEI6sQPDm1Nnsm-7eUAo89Be1iKaE"
 
 # Check API key
 if [ -z "$GOOGLE_API_KEY" ]; then
@@ -60,9 +60,6 @@ if ! python -c "import cv2" 2>/dev/null; then
     echo "📦 Installing dependencies..."
     echo "   (This includes OpenCV for video recording)"
     pip install -q -r backend/requirements.txt
-    
-    # Also need opencv-python for video
-    pip install -q opencv-python==4.8.1.78
     
     echo "✅ Dependencies installed"
 else

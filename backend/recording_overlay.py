@@ -53,6 +53,7 @@ class RecordingOverlay:
         self.start_time = None
         self.workflow_name = None
         self.workflow_description = None
+        self.countdown_value = 0
         
         # Callback for when recording completes
         self.on_recording_complete: Optional[Callable[[str], None]] = None
@@ -165,11 +166,47 @@ class RecordingOverlay:
         self.workflow_name = workflow_name
         self.workflow_description = workflow_description
         
+        # Show confirmation with clear instructions
+        confirm_msg = (
+            f"Ready to record: {workflow_name}\n\n"
+            "Recording will start in 3 seconds.\n"
+            "Position your windows and get ready!\n\n"
+            "Click OK to continue..."
+        )
+        
+        if not messagebox.askokcancel("Ready to Record?", confirm_msg):
+            return
+        
+        # Start countdown (non-blocking using tkinter's after())
+        print(f"\n🎬 STARTING RECORDING: {workflow_name}")
+        print("=" * 70)
+        print("⏰ Countdown:")
+        
+        self.countdown_value = 3
+        self._countdown_step()
+    
+    def _countdown_step(self):
+        """Non-blocking countdown step"""
+        if self.countdown_value > 0:
+            print(f"   {self.countdown_value}...")
+            self.countdown_value -= 1
+            
+            # Schedule next countdown step after 1 second
+            self.window.after(1000, self._countdown_step)
+        else:
+            # Countdown complete, start recording
+            self._start_recording_after_countdown()
+    
+    def _start_recording_after_countdown(self):
+        """Actually start recording after countdown completes"""
+        print("🔴 RECORDING NOW - Perform your workflow!")
+        print("=" * 70)
+        
         # Start recording
         try:
             self.recording_id = self.recorder.start_recording(
-                recording_name=workflow_name,
-                description=workflow_description
+                recording_name=self.workflow_name,
+                description=self.workflow_description
             )
             
             self.is_recording = True
@@ -183,8 +220,8 @@ class RecordingOverlay:
             # Start timer
             self._update_timer()
             
-            print(f"\n✅ Recording started: {workflow_name}")
-            print("   Perform your workflow naturally...")
+            print("\n✅ Recording in progress...")
+            print("   Perform your workflow naturally")
             print("   Click STOP when done")
         
         except Exception as e:
@@ -237,9 +274,8 @@ class RecordingOverlay:
         
         self.timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
         
-        # Update event count
-        event_count = len(self.recorder.events)
-        self.event_count_label.config(text=f"{event_count} actions")
+        # Event count is tracked in subprocess, show recording indicator
+        self.event_count_label.config(text="📹 Recording...")
         
         # Schedule next update
         self.timer_after_id = self.window.after(100, self._update_timer)
@@ -276,7 +312,7 @@ class WorkflowInputDialog:
     def __init__(self, parent):
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("New Workflow")
-        self.dialog.geometry("400x200")
+        self.dialog.geometry("400x280")
         self.dialog.resizable(False, False)
         
         # Make dialog modal
@@ -313,7 +349,18 @@ class WorkflowInputDialog:
         desc_label.pack(fill=tk.X)
         
         self.desc_entry = ttk.Entry(main_frame, font=("Arial", 10))
-        self.desc_entry.pack(fill=tk.X, pady=(2, 15))
+        self.desc_entry.pack(fill=tk.X, pady=(2, 10))
+        
+        # Help text
+        help_label = tk.Label(
+            main_frame,
+            text="Note: Recording starts AFTER you click 'Start Recording'\nand a 3-second countdown",
+            font=("Arial", 8),
+            fg="#7F8C8D",
+            wraplength=360,
+            justify=tk.LEFT
+        )
+        help_label.pack(pady=(0, 15))
         
         # Buttons
         button_frame = ttk.Frame(main_frame)

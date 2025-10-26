@@ -6,12 +6,16 @@ Processes recorded video + events to generate actionable workflows
 import cv2
 import json
 import time
+import os
+import base64
+import io
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 
 import numpy as np
 from PIL import Image
+import google.generativeai as genai
 
 from visual_analyzer import VisualAnalyzer
 from visual_memory import VisualWorkflowMemory
@@ -38,6 +42,11 @@ class ProcessedAction:
     verification: Optional[str] = None
     wait_condition: Optional[str] = None
     
+    # VLM-generated understanding
+    vlm_description: Optional[str] = None  # Human-readable: "Opened Chrome browser"
+    vlm_instruction: Optional[str] = None  # Computer-use instruction
+    vlm_element: Optional[str] = None      # What UI element was interacted with
+    
     def to_dict(self):
         result = asdict(self)
         # Remove Image objects (too large for JSON)
@@ -58,15 +67,32 @@ class RecordingProcessor:
     5. Generate finite automata-style action log
     """
     
-    def __init__(self):
+    def __init__(self, recordings_dir: Path = None):
         self.analyzer = VisualAnalyzer(use_easyocr=True)
         self.memory = VisualWorkflowMemory()
+        
+        # Recordings directory
+        if recordings_dir is None:
+            recordings_dir = Path(__file__).parent / "recordings"
+        self.recordings_dir = Path(recordings_dir)
         
         # Timing configuration
         self.before_offset = 0.05  # 50ms before action
         self.after_offset = 0.20   # 200ms after action
         
+        # Initialize Gemini VLM
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+            self.vlm_model = genai.GenerativeModel('gemini-1.5-flash')
+            self.use_vlm = True
+        else:
+            self.vlm_model = None
+            self.use_vlm = False
+        
         print("✅ Recording Processor initialized")
+        if self.use_vlm:
+            print("   - VLM: enabled (Gemini 1.5 Flash)")
     
     def process_recording(self,
                          recording_id: str,
@@ -87,7 +113,7 @@ class RecordingProcessor:
             print("=" * 70)
         
         # Load recording
-        recording_path = Path("backend/recordings") / recording_id
+        recording_path = self.recordings_dir / recording_id
         
         if not recording_path.exists():
             raise ValueError(f"Recording {recording_id} not found at {recording_path}")
@@ -284,6 +310,21 @@ class RecordingProcessor:
             screenshot_after=screenshot_after
         )
         
+        # VLM Analysis for semantic understanding
+        vlm_description, vlm_instruction, vlm_element = None, None, None
+        if self.use_vlm and (event_type == 'click' or (event_type == 'key_press' and step_number % 5 == 0)):
+            # Analyze clicks and every 5th keypress to reduce API calls
+            if show_progress:
+                print(f"     🤖 Analyzing with VLM...")
+            vlm_description, vlm_instruction, vlm_element = self._analyze_action_with_vlm(
+                event_type=event_type,
+                event_data=event_data,
+                screenshot_before=screenshot_before,
+                screenshot_after=screenshot_after
+            )
+            if show_progress and vlm_description:
+                print(f"     ✨ VLM: {vlm_description}")
+        
         return ProcessedAction(
             step_number=step_number,
             timestamp=timestamp,
@@ -297,7 +338,10 @@ class RecordingProcessor:
             ui_changed=ui_changed,
             action_description=action_description,
             verification=verification,
-            wait_condition=wait_condition
+            wait_condition=wait_condition,
+            vlm_description=vlm_description,
+            vlm_instruction=vlm_instruction,
+            vlm_element=vlm_element
         )
     
     def _extract_frame(self,
@@ -388,8 +432,111 @@ class RecordingProcessor:
         
         return verification, wait_condition
     
+    def _analyze_action_with_vlm(self,
+                                 event_type: str,
+                                 event_data: Dict,
+                                 screenshot_before: Optional[Image.Image],
+                                 screenshot_after: Optional[Image.Image]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Use VLM to understand what happened in this action.
+        
+        Returns:
+            (vlm_description, vlm_instruction, vlm_element)
+        """
+        if not self.use_vlm or not screenshot_before:
+            return None, None, None
+        
+        try:
+            # Prepare the prompt based on action type
+            if event_type == 'click':
+                x, y = event_data.get('x', 0), event_data.get('y', 0)
+                prompt = f"""You are analyzing a user's computer interaction.
+
+The user clicked at screen coordinates ({x}, {y}).
+
+Look at the BEFORE and AFTER screenshots and answer these questions:
+1. WHAT: What UI element was clicked? (e.g., "Chrome icon in dock", "Submit button", "Canvas link")
+2. RESULT: What happened after the click? (e.g., "Chrome browser opened", "Page navigated", "Popup appeared")
+3. INSTRUCTION: Write a single-line instruction for a computer-use model to reproduce this action.
+
+Format your response as JSON:
+{{
+  "element": "Brief description of what was clicked",
+  "description": "Human-readable description of what happened",
+  "instruction": "Precise instruction for computer-use model"
+}}
+
+Example:
+{{
+  "element": "Chrome icon in dock",
+  "description": "Opened Google Chrome browser",
+  "instruction": "Click on the Chrome icon in the dock to open the browser"
+}}"""
+            
+            elif event_type == 'key_press':
+                key = event_data.get('key', '').upper()
+                prompt = f"""You are analyzing a user's computer interaction.
+
+The user pressed the key: {key}
+
+Look at the BEFORE and AFTER screenshots and answer these questions:
+1. CONTEXT: What was happening when this key was pressed? What app/field was active?
+2. RESULT: What happened after pressing this key?
+3. INSTRUCTION: Write instruction for computer-use model.
+
+Format as JSON:
+{{
+  "element": "What was being interacted with",
+  "description": "What this key press accomplished",
+  "instruction": "Instruction for computer-use model"
+}}"""
+            
+            else:
+                return None, None, None
+            
+            # Convert images to bytes for Gemini
+            img_before_bytes = io.BytesIO()
+            screenshot_before.save(img_before_bytes, format='PNG')
+            img_before_bytes.seek(0)
+            
+            # Prepare content
+            content = [
+                "BEFORE (screenshot taken just before the action):",
+                Image.open(img_before_bytes)
+            ]
+            
+            if screenshot_after:
+                img_after_bytes = io.BytesIO()
+                screenshot_after.save(img_after_bytes, format='PNG')
+                img_after_bytes.seek(0)
+                content.extend([
+                    "\nAFTER (screenshot taken just after the action):",
+                    Image.open(img_after_bytes)
+                ])
+            
+            content.append(f"\n{prompt}")
+            
+            # Call Gemini
+            response = self.vlm_model.generate_content(content)
+            
+            # Parse JSON response
+            import re
+            json_match = re.search(r'\{[^}]+\}', response.text, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group())
+                return (
+                    result.get('description'),
+                    result.get('instruction'),
+                    result.get('element')
+                )
+            
+        except Exception as e:
+            print(f"     ⚠️  VLM analysis failed: {e}")
+        
+        return None, None, None
+    
     def _generate_action_log(self, actions: List[ProcessedAction]) -> str:
-        """Generate finite automata-style action log"""
+        """Generate finite automata-style action log with VLM insights"""
         
         log_lines = []
         log_lines.append("WORKFLOW ACTION LOG")
@@ -397,19 +544,28 @@ class RecordingProcessor:
         log_lines.append("")
         
         for action in actions:
-            step_line = f"{action.step_number}. {action.action_description}"
+            # Use VLM description if available, otherwise fall back to basic description
+            if action.vlm_description and action.vlm_element:
+                step_line = f"{action.step_number}. {action.vlm_description}"
+                log_lines.append(step_line)
+                log_lines.append(f"   Element: {action.vlm_element}")
+                if action.vlm_instruction:
+                    log_lines.append(f"   💻 Instruction: {action.vlm_instruction}")
+            else:
+                step_line = f"{action.step_number}. {action.action_description}"
+                
+                # Add wait condition
+                if action.wait_condition:
+                    step_line += f", {action.wait_condition}"
+                
+                # Add verification
+                if action.verification:
+                    step_line += f" and ensure {action.verification}"
+                
+                log_lines.append(step_line)
             
-            # Add wait condition
-            if action.wait_condition:
-                step_line += f", {action.wait_condition}"
-            
-            # Add verification
-            if action.verification:
-                step_line += f" and ensure {action.verification}"
-            
-            log_lines.append(step_line)
+            log_lines.append("")  # Blank line between steps
         
-        log_lines.append("")
         log_lines.append("=" * 70)
         
         return "\n".join(log_lines)
@@ -472,7 +628,7 @@ def test_processor():
     print()
     
     # List available recordings
-    recordings_dir = Path("backend/recordings")
+    recordings_dir = Path(__file__).parent / "recordings"
     
     if not recordings_dir.exists():
         print("No recordings directory found!")
