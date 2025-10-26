@@ -18,8 +18,8 @@ export default function VoiceOrb({ audioLevel, isListening, isSpeaking }: VoiceO
   }, [audioLevel]);
 
   // Calculate orb size based on audio level
-  const baseSize = 350;
-  const dynamicSize = baseSize + (audioLevel * 100);
+  const baseSize = 200;
+  const dynamicSize = baseSize + (audioLevel * 60);
 
   // Intensity multiplier when speaking/listening
   const intensity = isSpeaking ? 1.4 : isListening ? 1.2 : 0.9;
@@ -28,7 +28,7 @@ export default function VoiceOrb({ audioLevel, isListening, isSpeaking }: VoiceO
   const isActive = isSpeaking || isListening;
 
   return (
-    <div className="relative flex items-center justify-center w-full h-screen">
+    <div className="relative flex items-center justify-center w-full h-full">
       {/* Outer glow layer - only animates when speaking/listening */}
       <motion.div
         className="absolute rounded-full"
@@ -136,18 +136,6 @@ export default function VoiceOrb({ audioLevel, isListening, isSpeaking }: VoiceO
             ))}
           </>
         )}
-      </motion.div>
-
-      {/* Status text */}
-      <motion.div
-        className="absolute bottom-[12%] text-center"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-      >
-        <p className="text-sm text-gray-500 font-light tracking-wide">
-          {isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Ready"}
-        </p>
       </motion.div>
     </div>
   );

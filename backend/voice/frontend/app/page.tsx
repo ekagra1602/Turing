@@ -18,6 +18,9 @@ export default function Home() {
   const analyserRef = useRef<AudioAnalyser | null>(null);
   const animationFrameRef = useRef<number>();
 
+  // Track if agent is active (speaking or listening)
+  const isActive = isSpeaking || isListening;
+
   // Get LiveKit connection token from backend
   const getToken = async () => {
     try {
@@ -68,8 +71,11 @@ export default function Home() {
           // Agent is speaking
           setIsSpeaking(true);
 
-          // Attach audio element for playback
+          // Attach audio element for playback (hidden so it doesn't affect layout)
           const audioElement = track.attach();
+          audioElement.style.display = 'none';
+          audioElement.style.position = 'fixed';
+          audioElement.style.pointerEvents = 'none';
           document.body.appendChild(audioElement);
 
           // Set up audio analysis
@@ -150,75 +156,100 @@ export default function Home() {
     };
   }, []);
 
+  // Check if running in Electron
+  const isElectron = typeof window !== 'undefined' &&
+    ((window as any).electron?.isElectron === true ||
+     window.navigator.userAgent.includes('Electron') ||
+     (window as any).process?.type === 'renderer');
+
   return (
-    <main className="relative w-full h-screen overflow-hidden" style={{ background: '#0a0a0a' }}>
-      {/* Voice Orb - takes full screen */}
-      <motion.div
-        className="absolute inset-0"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
+    <main
+      className={isElectron ? 'fixed inset-0 w-full h-full m-0 p-0 overflow-hidden' : 'relative w-full h-screen overflow-hidden'}
+      style={{
+        background: isElectron ? 'transparent' : '#0a0a0a',
+      }}
+    >
+      {/* Floating Voice Assistant Window */}
+      <div
+        className={`overflow-hidden backdrop-blur-2xl no-drag ${
+          isElectron
+            ? ''
+            : 'absolute top-8 right-8 rounded-3xl border border-white/10'
+        }`}
+        style={{
+          ...(isElectron ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            margin: 0,
+            padding: 0,
+          } : {
+            width: '380px',
+            height: '480px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+          }),
+          background: 'linear-gradient(135deg, rgba(10, 10, 10, 0.95) 0%, rgba(20, 20, 30, 0.95) 100%)',
+        }}
       >
-        <VoiceOrb
-          audioLevel={audioLevel}
-          isListening={isListening}
-          isSpeaking={isSpeaking}
-        />
-      </motion.div>
+        {/* Header */}
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2.5 z-20 drag-region">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
+            <h1 className="text-[10px] font-semibold text-white/95 tracking-wider">TURING</h1>
+          </div>
+          <div className="flex gap-1.5 no-drag">
+            <div className="w-2.5 h-2.5 rounded-full bg-zinc-700/60 hover:bg-yellow-500/60 transition-colors cursor-pointer"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-zinc-700/60 hover:bg-red-500/60 transition-colors cursor-pointer"></div>
+          </div>
+        </div>
 
-      {/* Connection controls - centered at top */}
-      <div className="absolute top-0 left-0 right-0 flex justify-center pt-12 z-20">
-        <motion.div
-          className="flex flex-col items-center gap-4"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-        {!isConnected ? (
+        {/* Voice Orb - Clickable to toggle session */}
+        <div className="absolute inset-0 flex items-center justify-center no-drag">
           <button
-            onClick={connectToRoom}
-            className="group relative px-8 py-3 bg-white/10 hover:bg-white/15 rounded-full font-normal text-sm text-white/90 backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] border border-white/10 hover:border-white/20"
-            style={{
-              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+            onClick={isConnected ? disconnect : connectToRoom}
+            className="transition-transform duration-200 active:scale-95 cursor-pointer focus:outline-none"
+            style={{ width: '220px', height: '220px' }}
+            aria-label={isConnected ? "End voice session" : "Start voice session"}
+          >
+            <VoiceOrb
+              audioLevel={audioLevel}
+              isListening={isListening}
+              isSpeaking={isSpeaking}
+            />
+          </button>
+        </div>
+
+        {/* Status Text */}
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-20">
+          <motion.div
+            className="px-3.5 py-1.5 rounded-full bg-white/5 backdrop-blur-sm border border-white/10"
+            animate={{
+              scale: isActive ? [1, 1.02, 1] : 1,
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: isActive ? Infinity : 0,
             }}
           >
-            <span className="relative z-10">Start Voice Session</span>
-          </button>
-        ) : (
-          <button
-            onClick={disconnect}
-            className="group relative px-8 py-3 bg-white/5 hover:bg-white/10 rounded-full font-normal text-sm text-white/70 backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] border border-white/5 hover:border-white/10"
-            style={{
-              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
-            }}
-          >
-            <span className="relative z-10">End Session</span>
-          </button>
-        )}
+            <p className="text-[11px] font-medium text-gray-300 tracking-wide">
+              {isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Click to start"}
+            </p>
+          </motion.div>
+        </div>
 
+        {/* Error message if any */}
         {error && (
-          <div className="text-red-400 text-sm max-w-md text-center bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-2 backdrop-blur-sm">
-            {error}
+          <div className="absolute bottom-2 left-0 right-0 px-4 z-20">
+            <div className="text-red-400 text-xs text-center bg-red-900/20 border border-red-500/30 rounded-lg px-3 py-1.5">
+              {error}
+            </div>
           </div>
         )}
-        </motion.div>
       </div>
-
-      {/* Instructions - bottom overlay - hide when speaking/listening */}
-      {isConnected && !isSpeaking && !isListening && (
-        <motion.div
-          className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 text-center max-w-lg px-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-        >
-          <p className="text-gray-500 text-sm mb-3">Try saying:</p>
-          <div className="flex flex-col gap-2 text-gray-600 text-sm">
-            <p>"Hey AgentFlow, remember what I'm going to do now"</p>
-            <p>"Send an email to John"</p>
-          </div>
-        </motion.div>
-      )}
     </main>
   );
 }

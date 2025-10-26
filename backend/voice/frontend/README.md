@@ -2,15 +2,34 @@
 
 Beautiful ChatGPT-style voice interface for AgentFlow with animated orb visualization.
 
+## 🪟 Desktop Overlay Mode (NEW!)
+
+Run AgentFlow Voice as a **true desktop overlay** that floats above all applications!
+
+```bash
+./launch-overlay.sh
+```
+
+Or manually:
+```bash
+npm install
+npm run electron:dev
+```
+
+**[📖 Read the Electron Overlay Guide](./ELECTRON.md)** for more details.
+
+---
+
 ## Features
 
+- **🪟 Desktop Overlay** - Float above all apps as a transparent window
 - **Dynamic Voice Orb** - Animated orb that grows and pulses with audio levels
 - **Real-time Visualization** - Visual feedback when agent is listening or speaking
 - **Smooth Animations** - Framer Motion powered animations for fluid UI
 - **ChatGPT-Inspired Design** - Modern dark theme with gradient effects
 - **LiveKit Integration** - Seamless connection to voice agent backend
 
-## Quick Start
+## Quick Start (Browser Mode)
 
 ### 1. Install Dependencies
 
