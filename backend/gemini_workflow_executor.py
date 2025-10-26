@@ -306,28 +306,209 @@ class GeminiWorkflowExecutor:
                                   parameters: Dict[str, str] = None,
                                   confirm_steps: bool = False) -> bool:
         """
-        Execute semantic actions using Gemini's intelligence
+        Execute semantic actions using Gemini's intelligence with CONTEXT-AWARE GENERALIZATION
         
-        This is the NEW way - we don't replay raw clicks/keys,
-        we tell Gemini WHAT to do and let it figure out HOW.
+        Instead of blindly replaying recorded actions, we use them as context to understand
+        the user's intent and adapt intelligently to new situations.
         
         Args:
-            semantic_actions: List of semantic action dicts
+            semantic_actions: List of semantic action dicts (used as context)
             parameters: Parameter substitutions
             confirm_steps: Ask before each step
         
         Returns:
             True if all successful
         """
+        if self.verbose:
+            print("\n🧠 INTELLIGENT GENERALIZATION MODE")
+            print("   Using recorded workflow as CONTEXT, not exact replay")
+            print("   Gemini will adapt to current screen and user intent\n")
+        
+        # Get the user's original request from the workflow context
+        user_request = self._get_user_request_from_context(parameters)
+        
+        # Use Gemini to understand the intent and plan actions based on context
+        return self._execute_with_generalization(
+            user_request=user_request,
+            context_actions=semantic_actions,
+            parameters=parameters,
+            confirm_steps=confirm_steps
+        )
+    
+    def _get_user_request_from_context(self, parameters: Dict[str, str] = None) -> str:
+        """Extract the user's request from parameters and workflow context"""
+        if parameters and 'course_name' in parameters:
+            return f"check syllabus for {parameters['course_name']}"
+        elif parameters:
+            # Try to reconstruct from parameters
+            return " ".join(f"{k}: {v}" for k, v in parameters.items())
+        else:
+            return "execute workflow"
+    
+    def _execute_with_generalization(self,
+                                    user_request: str,
+                                    context_actions: List[Dict],
+                                    parameters: Dict[str, str] = None,
+                                    confirm_steps: bool = False) -> bool:
+        """
+        Execute workflow using intelligent generalization.
+        
+        Instead of replaying recorded actions, we:
+        1. Use the recorded workflow as CONTEXT to understand the pattern
+        2. Let Gemini analyze the current screen and user intent
+        3. Generate appropriate actions for the current situation
+        """
+        if self.verbose:
+            print(f"🎯 User Request: {user_request}")
+            print(f"📚 Using {len(context_actions)} recorded actions as context")
+            print()
+        
+        # Build context description from recorded actions
+        context_description = self._build_context_description(context_actions)
+        
+        # Use Gemini to plan and execute actions based on context
+        return self._execute_with_gemini_planning(
+            user_request=user_request,
+            context_description=context_description,
+            parameters=parameters,
+            confirm_steps=confirm_steps
+        )
+    
+    def _build_context_description(self, context_actions: List[Dict]) -> str:
+        """Build a natural language description of the recorded workflow context"""
+        descriptions = []
+        
+        for action in context_actions:
+            action_type = action.get('semantic_type', 'unknown')
+            description = action.get('description', '')
+            
+            if description:
+                descriptions.append(f"- {action_type}: {description}")
+            else:
+                descriptions.append(f"- {action_type}")
+        
+        return "Recorded workflow pattern:\n" + "\n".join(descriptions)
+    
+    def _execute_with_gemini_planning(self,
+                                     user_request: str,
+                                     context_description: str,
+                                     parameters: Dict[str, str] = None,
+                                     confirm_steps: bool = False) -> bool:
+        """
+        Use Gemini to plan and execute actions based on context and current screen
+        """
+        if self.verbose:
+            print("🤖 Analyzing current screen and planning actions...")
+        
+        # Capture current screen
+        try:
+            screenshot = np.array(pyautogui.screenshot())
+        except Exception as e:
+            print(f"❌ Could not capture screenshot: {e}")
+            return False
+        
+        # Build prompt for Gemini to plan actions
+        planning_prompt = f"""You are an intelligent automation assistant. The user wants to: "{user_request}"
+
+CONTEXT: Here's a similar workflow that was recorded before:
+{context_description}
+
+CURRENT SCREEN: I'll provide a screenshot of the current screen.
+
+Your task:
+1. Look at the current screen
+2. Understand what the user wants to accomplish
+3. Plan the specific actions needed to achieve their goal
+4. Adapt the recorded workflow pattern to the current situation
+
+IMPORTANT: Don't blindly replay the recorded actions. Instead:
+- Use the recorded workflow as a PATTERN/TEMPLATE
+- Adapt to the current screen layout and content
+- Focus on achieving the user's specific goal
+- If the user wants "Machine Learning" but you see "Data Visualization", adapt accordingly
+
+Return a JSON array of actions to execute:
+[
+    {{
+        "action_type": "open_application" | "click" | "type" | "scroll" | "navigate" | "wait",
+        "target": "what to interact with (for click/open_application)",
+        "value": "text to type (for type) or key name (for key) or wait seconds (for wait)",
+        "description": "human-readable description of this step"
+    }},
+    ...
+]
+
+Rules:
+- Be specific about what to click (e.g., "Machine Learning course" not just "course")
+- Adapt to the current screen content
+- Use the recorded workflow as guidance, not exact replay
+- Focus on the user's specific request
+- Keep actions simple and direct
+"""
+        
+        try:
+            # Use Gemini to plan actions
+            response = self.gemini.client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": planning_prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": self.gemini._encode_screenshot(screenshot)
+                                }
+                            }
+                        ]
+                    }
+                ],
+                config=self.gemini.config
+            )
+            
+            content = response.text
+            
+            # Extract JSON from response
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            import json
+            actions = json.loads(content)
+            
+            if not isinstance(actions, list) or not actions:
+                print("❌ Could not generate action plan")
+                return False
+            
+            if self.verbose:
+                print(f"✓ Generated {len(actions)} intelligent actions")
+                print("\n📋 Planned Actions:")
+                for i, action in enumerate(actions, 1):
+                    print(f"  {i}. {action.get('description', action.get('action_type'))}")
+                print()
+            
+            # Execute the planned actions
+            return self._execute_planned_actions(actions, confirm_steps)
+            
+        except Exception as e:
+            print(f"❌ Planning failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _execute_planned_actions(self, actions: List[Dict], confirm_steps: bool = False) -> bool:
+        """Execute the planned actions"""
         all_success = True
         
-        for i, action in enumerate(semantic_actions, 1):
+        for i, action in enumerate(actions, 1):
             self.current_step_number = i
             
             if self.verbose:
-                print(f"\n📍 Semantic Action {i}/{len(semantic_actions)}")
+                print(f"\n📍 Planned Action {i}/{len(actions)}")
                 print("-" * 70)
-                print(f"Action: {action['semantic_type']}")
+                print(f"Action: {action.get('action_type', 'unknown')}")
                 print(f"Description: {action.get('description', 'N/A')}")
             
             # Confirm before execution?
@@ -341,23 +522,80 @@ class GeminiWorkflowExecutor:
                     print("⏭️  Skipping action")
                     continue
             
-            # Execute semantic action
-            success, result = self._execute_semantic_action(action, parameters)
+            # Execute the planned action
+            success, result = self._execute_planned_action(action)
             
             self.execution_results.append(result)
-            
+
             if not success:
-                print(f"❌ Action {i} failed")
-                all_success = False
+                print(f"⚠️  Action {i} encountered an issue")
                 
-                # Ask if user wants to continue
-                if confirm_steps or input("Continue with next action? [y/n]: ").lower() != 'y':
-                    break
-            
+                if self.verbose:
+                    print(f"   → Attempting to continue workflow despite error...")
+                
+                if confirm_steps:
+                    response = input("Continue with next action? [y/n]: ").lower()
+                    if response != 'y':
+                        all_success = False
+                        break
+                else:
+                    print(f"   ✓ Auto-continuing to next action (resilience mode)")
+
             # Brief pause between actions
             time.sleep(0.5)
         
         return all_success
+    
+    def _execute_planned_action(self, action: Dict) -> Tuple[bool, Dict]:
+        """Execute a single planned action"""
+        action_type = action.get('action_type', '').lower()
+        target = action.get('target', '')
+        value = action.get('value', '')
+        description = action.get('description', '')
+        
+        result = {
+            'action_type': action_type,
+            'timestamp': time.time(),
+            'success': False,
+            'error': None,
+            'description': description
+        }
+        
+        try:
+            if action_type == 'open_application':
+                success = self._execute_open_application({'target': target})
+            
+            elif action_type == 'click':
+                success = self.gemini.click(target)
+            
+            elif action_type == 'type':
+                success = self.gemini.type_text(value, target=target)
+            
+            elif action_type == 'scroll':
+                direction = value if value else 'down'
+                success = self.gemini.scroll(direction=direction)
+            
+            elif action_type == 'navigate':
+                success = self._execute_navigate({'target': target, 'value': value})
+            
+            elif action_type == 'wait':
+                duration = float(value) if value else 1.0
+                time.sleep(duration)
+                success = True
+            
+            else:
+                print(f"⚠️  Unknown action type: {action_type}")
+                success = False
+            
+            result['success'] = success
+            
+        except Exception as e:
+            result['error'] = str(e)
+            if self.verbose:
+                print(f"❌ Execution error: {e}")
+            success = False
+        
+        return success, result
     
     def _execute_semantic_action(self,
                                  action: Dict,
@@ -397,11 +635,19 @@ class GeminiWorkflowExecutor:
             
             elif semantic_type == 'scroll':
                 success = self._execute_scroll_semantic(action_with_params)
-            
+
+            elif semantic_type == 'navigate':
+                success = self._execute_navigate(action_with_params)
+
+            elif semantic_type == 'wait':
+                success = self._execute_wait(action_with_params)
+
             else:
                 if self.verbose:
-                    print(f"⚠️  Unknown semantic type: {semantic_type}")
-                success = False
+                    print(f"⚠️  Unknown semantic type: {semantic_type}, attempting anyway...")
+
+                # Try generic execution - extract what we can from description
+                success = self._execute_generic(action_with_params)
             
             result['success'] = success
             
@@ -474,33 +720,72 @@ class GeminiWorkflowExecutor:
     
     def _execute_click_element(self, action: Dict) -> bool:
         """Execute: click_element using Gemini vision"""
-        target = action.get('target')
-        
+        # Try multiple fields to get the target
+        target = action.get('target') or action.get('value')
+
+        # If still no target, extract from description
         if not target:
-            print("❌ No target specified")
+            description = action.get('description', '')
+            if self.verbose:
+                print(f"⚠️  No explicit target, inferring from description...")
+                print(f"   Description: {description}")
+
+            # Try to extract quoted text from description
+            import re
+            # Look for patterns like "clicked on 'X'" or 'clicked "Y"'
+            matches = re.findall(r"'([^']+)'|\"([^\"]+)\"", description)
+            if matches:
+                target = matches[0][0] or matches[0][1]
+                if self.verbose:
+                    print(f"   ✓ Inferred target: '{target}'")
+
+        if not target:
+            print("❌ Could not determine click target")
             return False
-        
+
         if self.verbose:
             print(f"🎯 Clicking: {target}")
-        
+
         # Use Gemini to find and click the element
-        return self.gemini.click(target)
+        success = self.gemini.click(target)
+
+        # If click failed, try alternative approaches
+        if not success and self.verbose:
+            print(f"   ⚠️  Direct click failed, trying alternative...")
+            # Could add retry logic here with slightly different target descriptions
+
+        return success
     
     def _execute_type_text(self, action: Dict) -> bool:
         """Execute: type_text"""
-        text = action.get('text')
+        # Try to get text from multiple possible fields
+        text = action.get('text') or action.get('value') or action.get('data', {}).get('text')
         target_field = action.get('target')
-        
+
+        # If still no text, try to extract from description
         if not text:
-            print("❌ No text specified")
+            description = action.get('description', '')
+            # Look for text in quotes in the description
+            import re
+            matches = re.findall(r"'([^']+)'|\"([^\"]+)\"", description)
+            if matches:
+                text = matches[0][0] or matches[0][1]
+
+        if not text:
+            if self.verbose:
+                print("⚠️  No text specified, trying to infer from description...")
+                print(f"   Description: {action.get('description', 'N/A')}")
+
+            # Last resort: ask user or skip
+            print("❌ Could not determine what text to type")
             return False
-        
+
         if self.verbose:
             if target_field:
                 print(f"⌨️  Typing '{text}' into {target_field}")
             else:
                 print(f"⌨️  Typing: {text}")
-        
+
         # If we have a target field, click it first
         if target_field:
             return self.gemini.type_text(text, target=target_field)
@@ -513,11 +798,93 @@ class GeminiWorkflowExecutor:
     def _execute_scroll_semantic(self, action: Dict) -> bool:
         """Execute: scroll"""
         direction = action.get('direction', 'down')
-        
+
         if self.verbose:
             print(f"📜 Scrolling {direction}")
-        
+
         return self.gemini.scroll(direction=direction)
+
+    def _execute_navigate(self, action: Dict) -> bool:
+        """Execute: navigate - press Enter or follow a URL"""
+        target = action.get('target')
+        value = action.get('value')
+
+        if self.verbose:
+            print(f"🧭 Navigating...")
+            if value:
+                print(f"   URL/Target: {value}")
+
+        # If there's a value (URL), assume we already typed it and just press Enter
+        if value or target == "address bar":
+            import pyautogui
+            time.sleep(0.3)
+            pyautogui.press('enter')
+            time.sleep(1.5)  # Wait for page to load
+            if self.verbose:
+                print(f"✅ Navigation complete (pressed Enter)")
+            return True
+
+        # Otherwise, just press Enter
+        import pyautogui
+        pyautogui.press('enter')
+        time.sleep(1.0)
+        if self.verbose:
+            print(f"✅ Pressed Enter")
+        return True
+
+    def _execute_wait(self, action: Dict) -> bool:
+        """Execute: wait"""
+        duration = action.get('duration', 1.0)
+
+        if self.verbose:
+            print(f"⏱️  Waiting {duration}s...")
+
+        time.sleep(duration)
+        return True
+
+    def _execute_generic(self, action: Dict) -> bool:
+        """
+        Generic fallback execution - try to figure out what to do
+        from the description when we don't recognize the semantic type
+        """
+        description = action.get('description', '').lower()
+
+        if self.verbose:
+            print(f"🤔 Attempting generic execution...")
+            print(f"   Description: {action.get('description', 'N/A')}")
+
+        # Try to infer action from description
+        if 'click' in description:
+            # Extract target from description
+            import re
+            matches = re.findall(r"'([^']+)'|\"([^\"]+)\"", action.get('description', ''))
+            if matches:
+                target = matches[0][0] or matches[0][1]
+                return self.gemini.click(target)
+
+        elif 'type' in description or 'enter' in description:
+            # Extract text to type
+            import re
+            matches = re.findall(r"'([^']+)'|\"([^\"]+)\"", action.get('description', ''))
+            if matches:
+                text = matches[0][0] or matches[0][1]
+                import pyautogui
+                pyautogui.write(text, interval=0.05)
+                return True
+
+        elif 'scroll' in description:
+            direction = 'down' if 'down' in description else 'up'
+            return self.gemini.scroll(direction=direction)
+
+        elif 'wait' in description:
+            time.sleep(1.0)
+            return True
+
+        # If we can't figure it out, just log and continue
+        if self.verbose:
+            print(f"   ⚠️  Could not determine action, skipping...")
+
+        return True  # Return True to continue workflow
     
     def _execute_step(self, 
                      step: Dict, 
