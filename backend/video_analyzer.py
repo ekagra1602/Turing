@@ -74,7 +74,7 @@ class VideoWorkflowAnalyzer:
             print("\n📤 Uploading video to Gemini...")
 
         try:
-            video_file = self.client.files.upload(path=str(video_path))
+            video_file = self.client.files.upload(file=str(video_path))
 
             if self.verbose:
                 print(f"   ✓ Uploaded: {video_file.name}")

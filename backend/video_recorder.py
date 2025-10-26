@@ -77,16 +77,40 @@ class VideoRecorder:
         self.current_video_path = self.output_dir / filename
 
         # Setup video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        self.video_writer = cv2.VideoWriter(
-            str(self.current_video_path),
-            fourcc,
-            self.fps,
-            (self.screen_width, self.screen_height)
-        )
+        # Try multiple codecs for macOS compatibility
+        codecs_to_try = [
+            ('avc1', '.mp4'),  # H.264 (Apple preferred)
+            ('mp4v', '.mp4'),  # MPEG-4
+            ('MJPG', '.avi'),  # Motion JPEG (fallback, always works)
+        ]
 
-        if not self.video_writer.isOpened():
-            print("❌ Failed to initialize video writer!")
+        self.video_writer = None
+        for codec, ext in codecs_to_try:
+            try:
+                # Update file extension if needed
+                if not str(self.current_video_path).endswith(ext):
+                    self.current_video_path = self.current_video_path.with_suffix(ext)
+
+                fourcc = cv2.VideoWriter_fourcc(*codec)
+                writer = cv2.VideoWriter(
+                    str(self.current_video_path),
+                    fourcc,
+                    self.fps,
+                    (self.screen_width, self.screen_height)
+                )
+
+                if writer.isOpened():
+                    self.video_writer = writer
+                    print(f"   ✓ Using codec: {codec}")
+                    break
+                else:
+                    writer.release()
+            except Exception as e:
+                print(f"   ⚠️  Codec {codec} failed: {e}")
+                continue
+
+        if not self.video_writer or not self.video_writer.isOpened():
+            print("❌ Failed to initialize video writer with any codec!")
             return None
 
         # Start recording

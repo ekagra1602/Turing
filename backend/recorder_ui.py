@@ -301,10 +301,11 @@ class RecorderUI:
                 self.root.after(0, lambda: self._analysis_complete(True))
 
             except Exception as e:
-                print(f"❌ Analysis error: {e}")
+                error_msg = str(e)
+                print(f"❌ Analysis error: {error_msg}")
                 import traceback
                 traceback.print_exc()
-                self.root.after(0, lambda: self._analysis_complete(False, str(e)))
+                self.root.after(0, lambda msg=error_msg: self._analysis_complete(False, msg))
 
         thread = threading.Thread(target=analyze_thread, daemon=True)
         thread.start()
