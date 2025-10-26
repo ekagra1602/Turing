@@ -41,7 +41,6 @@ class GeminiWorkflowExecutor:
             verbose: Print detailed execution logs
         """
         self.memory = memory or VisualWorkflowMemory()
-        self.gemini = gemini or GeminiComputerUse(verbose=verbose)
         self.verbose = verbose
 
         # Execution state
@@ -51,6 +50,12 @@ class GeminiWorkflowExecutor:
 
         # Load all workflows as intention -> semantic_actions mapping
         self.workflows_by_intention = self._load_all_workflows()
+
+        # Initialize Gemini with workflows in system prompt
+        self.gemini = gemini or GeminiComputerUse(
+            verbose=verbose,
+            workflows_dict=self.workflows_by_intention
+        )
 
         if self.verbose:
             print("✅ Gemini Workflow Executor initialized")
@@ -114,8 +119,13 @@ class GeminiWorkflowExecutor:
 
         self.workflows_by_intention = self._load_all_workflows()
 
+        # Update Gemini's system prompt with new workflows
+        self.gemini.workflows_dict = self.workflows_by_intention
+        self.gemini.system_prompt = self.gemini._build_system_prompt()
+
         if self.verbose:
             print(f"✅ Reloaded {len(self.workflows_by_intention)} workflows")
+            print("   System prompt updated")
 
     def get_workflow_by_intention(self, intention_query: str) -> Optional[List[Dict]]:
         """

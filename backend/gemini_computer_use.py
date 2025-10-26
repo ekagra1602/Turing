@@ -30,36 +30,81 @@ class GeminiComputerUse:
     - Fast inference (Gemini 2.5 Flash)
     """
     
-    def __init__(self, model: str = "gemini-2.0-flash-exp", verbose: bool = False):
+    def __init__(self,
+                 model: str = "gemini-2.0-flash-exp",
+                 verbose: bool = False,
+                 workflows_dict: Optional[Dict[str, List[Dict]]] = None):
         """
         Initialize Gemini Computer Use
-        
+
         Args:
             model: Gemini model to use
                    - "gemini-2.0-flash-exp" (recommended, fastest)
                    - "gemini-2.5-flash"
             verbose: Print debug information
+            workflows_dict: Optional dict of {intention: semantic_actions} for system context
         """
         self.verbose = verbose
         self.model = model
         self.api_key = os.getenv("GOOGLE_API_KEY")
-        
+        self.workflows_dict = workflows_dict or {}
+
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not set!")
-        
+
         # Initialize Gemini client
         self.client = genai.Client(api_key=self.api_key)
-        
+
         # Enable computer use tools
         self.tools = [
             Tool(google_search=GoogleSearch()),
         ]
-        
+
+        # Build system prompt with workflows
+        self.system_prompt = self._build_system_prompt()
+
         if self.verbose:
             print(f"✅ Gemini Computer Use initialized")
             print(f"   Model: {model}")
             print(f"   Native screen understanding enabled")
-    
+            if self.workflows_dict:
+                print(f"   Loaded {len(self.workflows_dict)} workflows into system context")
+
+    def _build_system_prompt(self) -> str:
+        """Build system prompt with all workflows"""
+        if not self.workflows_dict:
+            return ""
+
+        import json
+
+        prompt = """
+# AVAILABLE LEARNED WORKFLOWS
+
+You have access to the following learned workflows. Each workflow shows a sequence of semantic actions that the user has previously demonstrated.
+
+"""
+
+        for intention, actions in self.workflows_dict.items():
+            prompt += f"\n## Workflow: {intention}\n\n"
+            prompt += "Semantic Actions:\n"
+            for i, action in enumerate(actions, 1):
+                prompt += f"{i}. [{action['semantic_type']}] {action.get('description', 'N/A')}\n"
+                if action.get('target'):
+                    prompt += f"   Target: {action['target']}\n"
+                if action.get('value'):
+                    prompt += f"   Value: {action['value']}\n"
+                if action.get('is_parameterizable'):
+                    prompt += f"   Parameter: {action.get('parameter_name')}\n"
+            prompt += "\n"
+
+        prompt += """
+When the user requests a task, check if it matches any of these learned workflows.
+If it does, follow the semantic actions from the workflow to accomplish the task.
+You can adapt parameters as needed based on the user's request.
+"""
+
+        return prompt
+
     def _encode_screenshot(self, screenshot: np.ndarray) -> str:
         """Encode screenshot to base64 for Gemini"""
         if screenshot.dtype != np.uint8:
