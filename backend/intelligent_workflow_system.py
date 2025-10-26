@@ -235,7 +235,7 @@ Be very specific with click targets (e.g., "address bar at top of browser window
         
         try:
             response = self.gemini_client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=planning_prompt,
                 config=GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
             )
@@ -436,7 +436,7 @@ If no parameters needed, return {{}}
         
         try:
             response = self.gemini_client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=GenerateContentConfig(temperature=0.1)
             )

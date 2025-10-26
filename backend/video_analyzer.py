@@ -22,13 +22,13 @@ class VideoWorkflowAnalyzer:
     The goal: Learn how the user does things, so the executor can mimic their style.
     """
 
-    def __init__(self, model: str = "gemini-2.0-flash-exp", verbose: bool = True):
+    def __init__(self, model: str = "gemini-2.0-flash", verbose: bool = True):
         """
         Initialize video analyzer
 
         Args:
             model: Gemini model to use
-                   - "gemini-2.0-flash-exp" (1M context, up to 1hr video)
+                   - "gemini-2.0-flash" (1M context, up to 1hr video)
                    - "gemini-2.5-flash" (experimental, best quality)
             verbose: Print detailed analysis
         """

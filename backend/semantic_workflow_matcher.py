@@ -63,7 +63,7 @@ class SemanticWorkflowMatcher:
             self.gemini_client = None
         else:
             self.gemini_client = genai.Client(api_key=self.api_key)
-            self.model = "gemini-2.0-flash-exp"
+            self.model = "gemini-2.0-flash"
     
     def _create_searchable_text(self, workflow: Dict) -> str:
         """

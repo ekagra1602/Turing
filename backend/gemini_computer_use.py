@@ -31,7 +31,7 @@ class GeminiComputerUse:
     """
     
     def __init__(self,
-                 model: str = "gemini-2.0-flash-exp",
+                 model: str = "gemini-2.0-flash",
                  verbose: bool = False,
                  workflows_dict: Optional[Dict[str, List[Dict]]] = None):
         """
@@ -39,7 +39,7 @@ class GeminiComputerUse:
 
         Args:
             model: Gemini model to use
-                   - "gemini-2.0-flash-exp" (recommended, fastest)
+                   - "gemini-2.0-flash" (recommended, fastest)
                    - "gemini-2.5-flash"
             verbose: Print debug information
             workflows_dict: Optional dict of {intention: semantic_actions} for system context

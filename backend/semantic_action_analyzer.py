@@ -53,7 +53,7 @@ class SemanticActionAnalyzer:
             raise ValueError("GOOGLE_API_KEY environment variable required")
         
         self.client = genai.Client(api_key=self.api_key)
-        self.model = "gemini-2.0-flash-exp"
+        self.model = "gemini-2.0-flash"
         
         if self.verbose:
             print("✅ Semantic Action Analyzer initialized")

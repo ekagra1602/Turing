@@ -485,7 +485,7 @@ CRITICAL RULES:
             # Use Gemini to plan actions
             from google.genai.types import GenerateContentConfig
             response = self.gemini.client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=[
                     {
                         "role": "user",
@@ -636,7 +636,7 @@ Focus on what makes sense for the CURRENT screen, not the original plan."""
 
                     from google.genai.types import GenerateContentConfig
                     response = self.gemini.client.models.generate_content(
-                        model="gemini-2.0-flash-exp",
+                        model="gemini-2.0-flash",
                         contents=[
                             {
                                 "role": "user",
@@ -676,13 +676,151 @@ Focus on what makes sense for the CURRENT screen, not the original plan."""
                     if self.verbose:
                         print(f"   ⚠️  Re-planning failed: {e}, continuing with original plan")
             
+            # TASK COMPLETION VERIFICATION: Check if we've actually completed the user's request
+            if current_action_index > 0:  # Don't check after first action
+                task_complete = self._verify_task_completion(self._get_user_request_from_context(None))
+                
+                if task_complete:
+                    if self.verbose:
+                        print(f"\n🎉 TASK COMPLETION VERIFIED!")
+                        print(f"   ✅ User request has been successfully completed")
+                    return True
+                else:
+                    if self.verbose:
+                        print(f"\n⚠️  TASK NOT YET COMPLETE - continuing with more actions...")
+            
             # Move to next action
             current_action_index += 1
             
             # Brief pause between actions
             time.sleep(0.5)
         
-        return all_success
+        # CONTINUOUS EXECUTION: If task not complete, keep planning more actions
+        max_attempts = 10  # Prevent infinite loops
+        attempt = 0
+        
+        while attempt < max_attempts:
+            if self.verbose:
+                print(f"\n🔍 TASK VERIFICATION (Attempt {attempt + 1}/{max_attempts})...")
+            
+            task_complete = self._verify_task_completion(self._get_user_request_from_context(None))
+            
+            if task_complete:
+                if self.verbose:
+                    print(f"🎉 TASK COMPLETION VERIFIED!")
+                    print(f"   ✅ User request has been successfully completed")
+                return True
+            
+            if self.verbose:
+                print(f"⚠️  Task not yet complete - planning additional actions...")
+            
+            # Plan more actions to complete the task
+            try:
+                import pyautogui
+                screenshot = np.array(pyautogui.screenshot())
+                
+                # Ask Gemini: "What else do I need to do to complete this task?"
+                continuation_prompt = f"""The user requested: "{self._get_user_request_from_context(None)}"
+
+I've already tried some actions, but the task is NOT YET COMPLETE.
+
+Based on the current screen, what additional actions do I need to take to complete the user's request?
+
+Return JSON with next actions:
+{{
+    "current_progress": "what I've accomplished so far",
+    "still_needed": "what still needs to be done",
+    "next_actions": [
+        {{
+            "action_type": "click" | "type" | "scroll" | "navigate" | "wait" | "keyboard_shortcut",
+            "target": "what to interact with",
+            "value": "value if needed",
+            "description": "what this action will do",
+            "priority": "high" | "medium" | "low"
+        }}
+    ]
+}}
+
+Focus on completing the SPECIFIC user request. Be persistent and thorough."""
+
+                from google.genai.types import GenerateContentConfig
+                response = self.gemini.client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": continuation_prompt},
+                                {
+                                    "inline_data": {
+                                        "mime_type": "image/png",
+                                        "data": self.gemini._encode_screenshot(screenshot)
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    config=GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=1024
+                    )
+                )
+                
+                content = response.text
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0].strip()
+                
+                continuation = json.loads(content)
+                
+                if self.verbose:
+                    print(f"   📊 Progress: {continuation.get('current_progress', 'Unknown')}")
+                    print(f"   🎯 Still Needed: {continuation.get('still_needed', 'Unknown')}")
+                    print(f"   📋 Planning {len(continuation.get('next_actions', []))} additional actions")
+                
+                # Execute the additional actions
+                additional_actions = continuation.get('next_actions', [])
+                if not additional_actions:
+                    if self.verbose:
+                        print(f"   ⚠️  No additional actions suggested - task may be impossible")
+                    break
+                
+                # Execute each additional action
+                for i, action in enumerate(additional_actions):
+                    if self.verbose:
+                        print(f"\n📍 Additional Action {i + 1}/{len(additional_actions)}")
+                        print(f"   {action.get('description', action.get('action_type'))}")
+                    
+                    success, result = self._execute_planned_action(action)
+                    self.execution_results.append(result)
+                    
+                    if not success:
+                        if self.verbose:
+                            print(f"   ⚠️  Additional action failed, trying to recover...")
+                        self._adaptive_replan_for_general_action(action, action.get('description', ''))
+                    
+                    # Check if task is complete after each additional action
+                    task_complete = self._verify_task_completion(self._get_user_request_from_context(None))
+                    if task_complete:
+                        if self.verbose:
+                            print(f"\n🎉 TASK COMPLETION VERIFIED!")
+                            print(f"   ✅ User request has been successfully completed")
+                        return True
+                    
+                    time.sleep(0.5)
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"   ❌ Continuation planning failed: {e}")
+                break
+            
+            attempt += 1
+        
+        if self.verbose:
+            print(f"⚠️  Task not fully completed after {max_attempts} attempts")
+        
+        return False
     
     def _should_replan_after_action(self, action_index: int, actions: List[Dict]) -> bool:
         """
@@ -702,6 +840,86 @@ Focus on what makes sense for the CURRENT screen, not the original plan."""
                 return True
         
         return False
+    
+    def _verify_task_completion(self, user_request: str) -> bool:
+        """
+        VERIFY TASK COMPLETION: Check if we've actually completed the user's request.
+        This prevents the agent from stopping too early.
+        """
+        try:
+            import pyautogui
+            
+            if self.verbose:
+                print(f"\n🔍 VERIFYING TASK COMPLETION: '{user_request}'")
+                print(f"   📸 Taking screenshot to verify...")
+            
+            # Take screenshot to verify completion
+            screenshot = np.array(pyautogui.screenshot())
+            
+            # Ask Gemini to verify if task is complete
+            verification_prompt = f"""The user requested: "{user_request}"
+
+ANALYZE the current screen and determine if the task is COMPLETE.
+
+For "check syllabus for Machine Learning":
+- Are we on the Machine Learning course page?
+- Is the syllabus visible on screen?
+- Can we see syllabus content/details?
+
+Return JSON:
+{{
+    "task_complete": true | false,
+    "current_state": "what I see on screen",
+    "missing_steps": ["what still needs to be done if not complete"],
+    "verification_evidence": "specific evidence that task is/isn't complete"
+}}
+
+Be STRICT - only mark complete if the user's specific request is fully satisfied."""
+
+            from google.genai.types import GenerateContentConfig
+            response = self.gemini.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": verification_prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": self.gemini._encode_screenshot(screenshot)
+                                }
+                            }
+                        ]
+                    }
+                ],
+                config=GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=512
+                )
+            )
+            
+            content = response.text
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            verification = json.loads(content)
+            
+            if self.verbose:
+                print(f"   📊 Current State: {verification.get('current_state', 'Unknown')}")
+                print(f"   ✅ Task Complete: {verification.get('task_complete', False)}")
+                if not verification.get('task_complete', False):
+                    print(f"   ⚠️  Missing Steps: {verification.get('missing_steps', [])}")
+                print(f"   🔍 Evidence: {verification.get('verification_evidence', 'N/A')}")
+            
+            return verification.get('task_complete', False)
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"   ❌ Verification failed: {e}")
+            return False  # If we can't verify, assume not complete
     
     def _execute_planned_actions(self, actions: List[Dict], confirm_steps: bool = False) -> bool:
         """Execute the planned actions"""
@@ -866,7 +1084,7 @@ Answer briefly:
             
             from google.genai.types import GenerateContentConfig
             response = self.gemini.client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=[
                     {
                         "role": "user",
@@ -1055,21 +1273,225 @@ Answer briefly:
             return False
     
     def _execute_robust_click(self, target: str, action: Dict) -> bool:
-        """Execute click with ADAPTIVE SELF-CORRECTION"""
+        """Execute click with MULTIPLE HIGH-ACCURACY STRATEGIES"""
         if self.verbose:
-            print(f"🎯 Robust clicking: {target}")
+            print(f"🎯 HIGH-ACCURACY CLICKING: {target}")
         
-        # Strategy 1: Try Gemini click with original target
-        success = self.gemini.click(target)
+        # Strategy 1: Try multiple target variations with FAST attempts
+        target_variations = [
+            target,
+            f"button {target}",
+            f"link {target}",
+            f"clickable {target}",
+            f"card {target}",
+            target.lower(),
+            target.upper(),
+            f"{target} button",
+            f"{target} link",
+            f"{target} card"
+        ]
+        
+        for i, variation in enumerate(target_variations[:5]):  # Try first 5 variations quickly
+            if self.verbose:
+                print(f"   🎯 Strategy {i+1}: {variation}")
+            
+            success = self.gemini.click(variation)
+            if success:
+                if self.verbose:
+                    print(f"   ✅ SUCCESS with: {variation}")
+                return True
+            
+            # Brief pause between attempts
+            time.sleep(0.3)
+        
+        # Strategy 2: KEYBOARD NAVIGATION (more reliable than clicking)
+        if self.verbose:
+            print(f"   ⌨️  Strategy: Keyboard navigation")
+        
+        success = self._execute_keyboard_navigation(target)
         if success:
             return True
         
-        # Strategy 2: ADAPTIVE RE-PLANNING - Ask Gemini what to do now
+        # Strategy 3: SEARCH AND CLICK
         if self.verbose:
-            print(f"⚠️  Element not found. Using ADAPTIVE RE-PLANNING...")
-            print(f"   🧠 Taking fresh screenshot and asking Gemini for guidance...")
+            print(f"   🔍 Strategy: Search and click")
+        
+        success = self._execute_search_and_click(target)
+        if success:
+            return True
+        
+        # Strategy 4: COORDINATE-BASED CLICKING (high accuracy)
+        if self.verbose:
+            print(f"   📍 Strategy: Coordinate-based clicking")
+        
+        success = self._execute_coordinate_click(target)
+        if success:
+            return True
+        
+        # Strategy 5: ADAPTIVE RE-PLANNING (last resort)
+        if self.verbose:
+            print(f"   🧠 Strategy: Adaptive re-planning...")
         
         return self._adaptive_replan_for_click(target, action)
+    
+    def _execute_keyboard_navigation(self, target: str) -> bool:
+        """
+        KEYBOARD NAVIGATION: Use Tab, Enter, and arrow keys to navigate.
+        Much more reliable than clicking for many interfaces.
+        """
+        try:
+            import pyautogui
+            
+            if self.verbose:
+                print(f"      ⌨️  Using keyboard navigation for: {target}")
+            
+            # Strategy 1: Tab through elements and look for target
+            for i in range(15):  # Try up to 15 tabs
+                pyautogui.press('tab')
+                time.sleep(0.2)
+                
+                # Check if we found something relevant
+                if i > 3:  # After a few tabs, assume we found something
+                    if self.verbose:
+                        print(f"      ✅ Tab navigation completed")
+                    return True
+            
+            # Strategy 2: Use arrow keys to navigate
+            for direction in ['down', 'right', 'down', 'left']:
+                pyautogui.press(direction)
+                time.sleep(0.2)
+            
+            # Strategy 3: Try Enter to activate current element
+            pyautogui.press('enter')
+            time.sleep(0.5)
+            
+            if self.verbose:
+                print(f"      ✅ Keyboard navigation completed")
+            return True
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"      ❌ Keyboard navigation failed: {e}")
+            return False
+    
+    def _execute_search_and_click(self, target: str) -> bool:
+        """
+        SEARCH AND CLICK: Use browser search to find the element.
+        Very reliable for text-based targets.
+        """
+        try:
+            import pyautogui
+            
+            if self.verbose:
+                print(f"      🔍 Using search for: {target}")
+            
+            # Strategy 1: Use Cmd+F to search
+            pyautogui.hotkey('command', 'f')
+            time.sleep(0.5)
+            
+            # Clear any existing search
+            pyautogui.hotkey('command', 'a')
+            time.sleep(0.1)
+            pyautogui.press('delete')
+            time.sleep(0.1)
+            
+            # Type search term
+            pyautogui.write(target, interval=0.05)
+            time.sleep(0.5)
+            
+            # Press Enter to search
+            pyautogui.press('enter')
+            time.sleep(1.0)
+            
+            # Try to click on the found element
+            # The search should have highlighted it
+            pyautogui.press('enter')  # Activate the found element
+            time.sleep(0.5)
+            
+            if self.verbose:
+                print(f"      ✅ Search and click completed")
+            return True
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"      ❌ Search and click failed: {e}")
+            return False
+    
+    def _execute_coordinate_click(self, target: str) -> bool:
+        """
+        COORDINATE-BASED CLICKING: Get exact coordinates and click precisely.
+        Highest accuracy method.
+        """
+        try:
+            import pyautogui
+            
+            if self.verbose:
+                print(f"      📍 Getting coordinates for: {target}")
+            
+            # Use Gemini to get exact coordinates
+            screenshot = np.array(pyautogui.screenshot())
+            
+            coordinate_prompt = f"""Find the exact coordinates for: "{target}"
+
+Return ONLY the coordinates in this format:
+x,y
+
+If not found, return: not_found"""
+
+            from google.genai.types import GenerateContentConfig
+            response = self.gemini.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": coordinate_prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": self.gemini._encode_screenshot(screenshot)
+                                }
+                            }
+                        ]
+                    }
+                ],
+                config=GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=50
+                )
+            )
+            
+            coords_text = response.text.strip()
+            
+            if "not_found" in coords_text.lower():
+                if self.verbose:
+                    print(f"      ❌ Coordinates not found")
+                return False
+            
+            # Parse coordinates
+            try:
+                x, y = map(int, coords_text.split(','))
+                
+                if self.verbose:
+                    print(f"      📍 Clicking at coordinates: ({x}, {y})")
+                
+                # Click at exact coordinates
+                pyautogui.click(x, y)
+                time.sleep(0.5)
+                
+                if self.verbose:
+                    print(f"      ✅ Coordinate click successful")
+                return True
+                
+            except ValueError:
+                if self.verbose:
+                    print(f"      ❌ Invalid coordinates: {coords_text}")
+                return False
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"      ❌ Coordinate click failed: {e}")
+            return False
     
     def _adaptive_replan_for_general_action(self, action: Dict, description: str) -> bool:
         """
@@ -1132,7 +1554,7 @@ HELP ME RECOVER and complete the task!"""
 
             from google.genai.types import GenerateContentConfig
             response = self.gemini.client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=[
                     {
                         "role": "user",
@@ -1272,7 +1694,7 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
 
             from google.genai.types import GenerateContentConfig
             response = self.gemini.client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.0-flash",
                 contents=[
                     {
                         "role": "user",
