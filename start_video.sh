@@ -14,7 +14,8 @@ if [ ! -d "backend" ]; then
     exit 1
 fi
 
-export GOOGLE_API_KEY="AIzaSyD8c-yEI6sQPDm1Nnsm-7eUAo89Be1iKaE"
+# load .env file
+source .env
 
 # Check API key
 if [ -z "$GOOGLE_API_KEY" ]; then

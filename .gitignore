@@ -33,4 +33,4 @@ Thumbs.db
 *.tmp
 *.log
 
-start_video.sh
+.env
