@@ -427,12 +427,20 @@ CURRENT SCREEN: I'll provide a screenshot of the current screen.
 
 🎯 YOUR MISSION: Complete the user's request with MAXIMUM AGENCY and ROBUSTNESS.
 
+⚠️  CRITICAL: DO NOT blindly copy the recorded workflow steps! 
+- The recorded workflow is CONTEXT to understand the GOAL, not a template to copy
+- Plan actions based on CURRENT SCREEN STATE, not recorded steps
+- Only include actions that make sense for the CURRENT situation
+- Don't include scroll actions if you're not even on the target page yet
+- Don't include course-specific actions if you haven't navigated to the course yet
+
 CORE PRINCIPLES:
 1. **HIGH AGENCY**: Take initiative, don't wait for perfect conditions
 2. **HIGH ROBUSTNESS**: Use multiple strategies, keyboard shortcuts preferred over mouse
 3. **HIGH AUTONOMY**: Self-correct when stuck, try alternative approaches
 4. **HIGH INCENTIVE**: You MUST complete the user's goal - failure is not an option
 5. **ADAPTIVE**: If something doesn't work, immediately try a different approach
+6. **CONTEXT-AWARE**: Plan based on current screen, not recorded steps
 
 STRATEGY HIERARCHY (in order of preference):
 1. **KEYBOARD SHORTCUTS** (most reliable) - Cmd+T, Cmd+L, Tab, Enter, etc.
@@ -470,6 +478,7 @@ CRITICAL RULES:
 - NEVER give up - try alternative approaches
 - Focus on the user's SPECIFIC goal (e.g., "Machine Learning" not generic courses)
 - Be AGGRESSIVE in completing the task
+- PLAN BASED ON CURRENT SCREEN, NOT RECORDED STEPS
 """
         
         try:
@@ -519,14 +528,180 @@ CRITICAL RULES:
                     print(f"  {i}. {action.get('description', action.get('action_type'))}")
                 print()
             
-            # Execute the planned actions
-            return self._execute_planned_actions(actions, confirm_steps)
+            # Execute the planned actions with STEP-BY-STEP INTELLIGENCE
+            return self._execute_planned_actions_with_intelligence(actions, confirm_steps)
             
         except Exception as e:
             print(f"❌ Planning failed: {e}")
             import traceback
             traceback.print_exc()
             return False
+    
+    def _execute_planned_actions_with_intelligence(self, actions: List[Dict], confirm_steps: bool = False) -> bool:
+        """
+        STEP-BY-STEP INTELLIGENT EXECUTION: After each action, re-analyze the screen
+        and decide what to do next, instead of blindly following the plan.
+        """
+        if self.verbose:
+            print("\n🧠 STEP-BY-STEP INTELLIGENT EXECUTION")
+            print("   After each action, I'll re-analyze and decide what's next")
+            print("   This prevents blind copying of recorded steps\n")
+        
+        all_success = True
+        current_action_index = 0
+        
+        while current_action_index < len(actions):
+            action = actions[current_action_index]
+            self.current_step_number = current_action_index + 1
+            
+            if self.verbose:
+                print(f"\n📍 Intelligent Action {current_action_index + 1}/{len(actions)}")
+                print("-" * 70)
+                print(f"Action: {action.get('action_type', 'unknown')}")
+                print(f"Description: {action.get('description', 'N/A')}")
+            
+            # Confirm before execution?
+            if confirm_steps:
+                response = input(f"Execute action {current_action_index + 1}? [y/n/s(kip)/q(uit)]: ").lower()
+                if response == 'n' or response == 'q':
+                    print("⏸️  Execution stopped by user")
+                    all_success = False
+                    break
+                elif response == 's':
+                    print("⏭️  Skipping action")
+                    current_action_index += 1
+                    continue
+            
+            # Execute the action
+            success, result = self._execute_planned_action(action)
+            self.execution_results.append(result)
+            
+            if not success:
+                print(f"⚠️  Action {current_action_index + 1} encountered an issue")
+                
+                if self.verbose:
+                    print(f"   → Using ADAPTIVE INTELLIGENCE to recover...")
+                
+                # Use adaptive intelligence to recover
+                recovery_success = self._adaptive_replan_for_general_action(action, action.get('description', ''))
+                
+                if not recovery_success:
+                    if confirm_steps:
+                        response = input("Continue with next action? [y/n]: ").lower()
+                        if response != 'y':
+                            all_success = False
+                            break
+                    else:
+                        print(f"   ✓ Auto-continuing to next action (resilience mode)")
+            
+            # STEP-BY-STEP INTELLIGENCE: After each action, decide if we should continue
+            # or if the situation has changed and we need to re-plan
+            if self.verbose:
+                print(f"   🔍 Analyzing current state after action...")
+            
+            # Check if we've made significant progress and should re-plan
+            should_replan = self._should_replan_after_action(current_action_index, actions)
+            
+            if should_replan:
+                if self.verbose:
+                    print(f"   🧠 Significant progress detected - re-planning next steps...")
+                
+                # Take new screenshot and re-plan remaining actions
+                try:
+                    import pyautogui
+                    screenshot = np.array(pyautogui.screenshot())
+                    
+                    # Ask Gemini: "What should I do next based on current state?"
+                    replan_prompt = f"""I was executing a workflow to: "{self._get_user_request_from_context(None)}"
+
+I've completed {current_action_index + 1} actions so far. Here's the current screen.
+
+What should I do next? Plan the remaining steps based on CURRENT SCREEN STATE.
+
+Return JSON with next actions:
+{{
+    "current_progress": "what I've accomplished so far",
+    "next_actions": [
+        {{
+            "action_type": "click" | "type" | "scroll" | "navigate" | "wait" | "keyboard_shortcut",
+            "target": "what to interact with",
+            "value": "value if needed",
+            "description": "what this action will do",
+            "priority": "high" | "medium" | "low"
+        }}
+    ]
+}}
+
+Focus on what makes sense for the CURRENT screen, not the original plan."""
+
+                    from google.genai.types import GenerateContentConfig
+                    response = self.gemini.client.models.generate_content(
+                        model="gemini-2.0-flash-exp",
+                        contents=[
+                            {
+                                "role": "user",
+                                "parts": [
+                                    {"text": replan_prompt},
+                                    {
+                                        "inline_data": {
+                                            "mime_type": "image/png",
+                                            "data": self.gemini._encode_screenshot(screenshot)
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        config=GenerateContentConfig(
+                            temperature=0.1,
+                            max_output_tokens=1024
+                        )
+                    )
+                    
+                    content = response.text
+                    if "```json" in content:
+                        content = content.split("```json")[1].split("```")[0].strip()
+                    elif "```" in content:
+                        content = content.split("```")[1].split("```")[0].strip()
+                    
+                    replan = json.loads(content)
+                    
+                    if self.verbose:
+                        print(f"   📊 Progress: {replan.get('current_progress', 'Unknown')}")
+                        print(f"   🎯 Re-planned {len(replan.get('next_actions', []))} actions")
+                    
+                    # Replace remaining actions with re-planned ones
+                    actions = actions[:current_action_index + 1] + replan.get('next_actions', [])
+                    
+                except Exception as e:
+                    if self.verbose:
+                        print(f"   ⚠️  Re-planning failed: {e}, continuing with original plan")
+            
+            # Move to next action
+            current_action_index += 1
+            
+            # Brief pause between actions
+            time.sleep(0.5)
+        
+        return all_success
+    
+    def _should_replan_after_action(self, action_index: int, actions: List[Dict]) -> bool:
+        """
+        Determine if we should re-plan after this action based on progress made.
+        """
+        # Re-plan after significant navigation actions
+        if action_index < len(actions):
+            action = actions[action_index]
+            action_type = action.get('action_type', '')
+            
+            # Re-plan after navigation, app opening, or major state changes
+            if action_type in ['navigate', 'open_application', 'keyboard_shortcut']:
+                return True
+            
+            # Re-plan every 3 actions to stay adaptive
+            if action_index > 0 and action_index % 3 == 0:
+                return True
+        
+        return False
     
     def _execute_planned_actions(self, actions: List[Dict], confirm_steps: bool = False) -> bool:
         """Execute the planned actions"""
