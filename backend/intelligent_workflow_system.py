@@ -55,15 +55,18 @@ class IntelligentWorkflowSystem:
         """
         self.verbose = verbose
         
-        # Choose memory backend: Snowflake (cloud) or local files
+        # ALWAYS use local storage (Snowflake kept for demo connection only)
+        self.memory = VisualWorkflowMemory()
+        self.storage_type = "Local Files + Snowflake Demo"
+        
+        # Connect to Snowflake for demo (but don't use it for storage)
         if use_snowflake and SNOWFLAKE_AVAILABLE:
-            self.memory = SnowflakeWorkflowMemory()
-            self.storage_type = "Snowflake Cloud"
+            try:
+                self.snowflake_demo = SnowflakeWorkflowMemory()
+            except:
+                self.snowflake_demo = None
         else:
-            if use_snowflake and not SNOWFLAKE_AVAILABLE:
-                print("⚠️  Snowflake requested but not available, using local storage")
-            self.memory = VisualWorkflowMemory()
-            self.storage_type = "Local Files"
+            self.snowflake_demo = None
         
         # Core components (all use the same memory backend)
         self.matcher = SemanticWorkflowMatcher(memory=self.memory, use_snowflake=use_snowflake)
@@ -220,10 +223,14 @@ Example for "open github":
     {{"action_type": "key", "value": "enter", "description": "Press Enter to navigate"}}
 ]
 
-Important:
-- For "open_application", use Raycast (Option + Space) on macOS
-- For browser navigation, just use the browser name (e.g., "Chrome", "Brave", "Safari")
-- Be very specific with click targets (e.g., "address bar at top of browser window")
+CRITICAL RULES FOR macOS:
+- Apps are opened using Raycast launcher (Option + Space shortcut)
+- NEVER use target="Raycast" - Raycast is the LAUNCHER itself, not an app to open
+- For any app (Chrome, Safari, Twitter, etc.), use "open_application" with the app name
+- The system will automatically use Raycast to open it
+- Example: target="Chrome" will trigger: Option+Space → type "Chrome" → Enter
+
+Be very specific with click targets (e.g., "address bar at top of browser window")
 """
         
         try:
@@ -463,7 +470,7 @@ If no parameters needed, return {{}}
             workflow_id
         """
         print("\n" + "=" * 70)
-        print("🔴 STARTING WORKFLOW RECORDING")
+        print("🔴 RECORDING STARTED")
         print("=" * 70)
         
         workflow_id = self.recorder.start_recording(
@@ -472,13 +479,13 @@ If no parameters needed, return {{}}
             tags=tags
         )
         
-        print(f"\n✅ Recording workflow: {workflow_name}")
-        print(f"   ID: {workflow_id}")
+        print(f"\n✅ Now recording: {workflow_name}")
         print()
-        print("📝 Instructions:")
-        print("   1. Perform your workflow naturally")
-        print("   2. System will watch and learn your actions")
-        print("   3. When done, call: system.stop_recording()")
+        print("📝 What to do:")
+        print("   1. Perform your workflow now (I'm watching!)")
+        print("   2. Click, type, navigate - do whatever you need")
+        print()
+        print("⏹  When done, type: stop")
         print()
         print("=" * 70)
         
@@ -528,12 +535,19 @@ If no parameters needed, return {{}}
         
         while True:
             try:
-                user_input = input("\n💬 Your request: ").strip()
+                # Show if currently recording
+                if self.recorder.is_recording:
+                    user_input = input("\n🔴 RECORDING > Type 'stop' to finish: ").strip()
+                else:
+                    user_input = input("\n💬 Your request: ").strip()
                 
                 if not user_input:
                     continue
                 
                 if user_input.lower() == 'quit':
+                    if self.recorder.is_recording:
+                        print("\n⚠️  Still recording! Type 'stop' first, then 'quit'")
+                        continue
                     print("👋 Goodbye!")
                     break
                 
@@ -541,6 +555,9 @@ If no parameters needed, return {{}}
                     self.list_workflows()
                 
                 elif user_input.lower().startswith('record '):
+                    if self.recorder.is_recording:
+                        print("\n⚠️  Already recording! Type 'stop' first")
+                        continue
                     workflow_name = user_input[7:].strip()
                     if workflow_name:
                         self.record_workflow(workflow_name)
@@ -548,9 +565,15 @@ If no parameters needed, return {{}}
                         print("Usage: record <workflow name>")
                 
                 elif user_input.lower() == 'stop':
-                    self.stop_recording()
+                    if not self.recorder.is_recording:
+                        print("\n⚠️  Not recording anything")
+                    else:
+                        self.stop_recording()
                 
                 else:
+                    if self.recorder.is_recording:
+                        print("\n⚠️  Currently recording - type 'stop' to finish recording first")
+                        continue
                     # Execute from prompt
                     self.execute_from_prompt(user_input, auto_execute=False, confirm_steps=False)
                 

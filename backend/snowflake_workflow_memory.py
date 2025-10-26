@@ -75,6 +75,20 @@ class SnowflakeWorkflowMemory:
                     steps_count INTEGER DEFAULT 0
                 )
             """)
+            
+            # Create steps table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workflow_steps (
+                    workflow_id VARCHAR(100),
+                    step_number INTEGER,
+                    action_type VARCHAR(100),
+                    action_data TEXT,
+                    visual_context TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+                    PRIMARY KEY (workflow_id, step_number)
+                )
+            """)
+            
             print(f"✅ Database ready: {self.database}.{self.schema}")
         finally:
             cursor.close()
@@ -110,11 +124,31 @@ class SnowflakeWorkflowMemory:
     
     def finalize_workflow(self, workflow_id: str, parameters: List[Dict] = None, 
                          semantic_actions: List[Dict] = None, steps_count: int = 0):
-        """Finalize workflow - alias for save_workflow for compatibility"""
-        if semantic_actions and parameters:
-            # Convert parameters from dict format to list of names
-            param_names = [p.get('name', '') for p in parameters] if isinstance(parameters[0], dict) else parameters
-            self.save_workflow(workflow_id, semantic_actions, param_names, steps_count)
+        """Finalize workflow - always sets status to ready"""
+        cursor = self.conn.cursor()
+        
+        try:
+            # Always mark as ready, even without semantic analysis
+            if semantic_actions or parameters:
+                # Convert parameters from dict format to list of names
+                param_names = []
+                if parameters:
+                    param_names = [p.get('name', '') for p in parameters] if isinstance(parameters[0], dict) else parameters
+                
+                cursor.execute("""
+                    UPDATE workflows 
+                    SET semantic_actions = %s, parameters = %s, status = 'ready'
+                    WHERE workflow_id = %s
+                """, (json.dumps(semantic_actions or []), json.dumps(param_names), workflow_id))
+            else:
+                # Just mark as ready
+                cursor.execute("""
+                    UPDATE workflows 
+                    SET status = 'ready'
+                    WHERE workflow_id = %s
+                """, (workflow_id,))
+        finally:
+            cursor.close()
     
     def list_workflows(self, status: str = 'ready', tags: List[str] = None) -> List[Dict]:
         """List all workflows"""
@@ -145,10 +179,11 @@ class SnowflakeWorkflowMemory:
             cursor.close()
     
     def get_workflow(self, workflow_id: str) -> Optional[Dict]:
-        """Get workflow by ID"""
+        """Get workflow by ID with all steps"""
         cursor = self.conn.cursor()
         
         try:
+            # Get workflow metadata
             cursor.execute("""
                 SELECT workflow_id, workflow_name, workflow_description,
                        semantic_actions, parameters, steps_count
@@ -159,14 +194,33 @@ class SnowflakeWorkflowMemory:
             if not row:
                 return None
             
-            return {
+            workflow = {
                 'workflow_id': row[0],
                 'name': row[1],
                 'description': row[2],
                 'semantic_actions': json.loads(row[3]) if row[3] else [],
                 'parameters': json.loads(row[4]) if row[4] else [],
-                'steps_count': row[5]
+                'steps_count': row[5],
+                'steps': []
             }
+            
+            # Get all steps
+            cursor.execute("""
+                SELECT step_number, action_type, action_data, visual_context
+                FROM workflow_steps
+                WHERE workflow_id = %s
+                ORDER BY step_number
+            """, (workflow_id,))
+            
+            for step_row in cursor.fetchall():
+                workflow['steps'].append({
+                    'step_number': step_row[0],
+                    'action_type': step_row[1],
+                    'action_data': json.loads(step_row[2]) if step_row[2] else {},
+                    'visual_context': json.loads(step_row[3]) if step_row[3] else {}
+                })
+            
+            return workflow
         finally:
             cursor.close()
     
@@ -178,6 +232,39 @@ class SnowflakeWorkflowMemory:
                 UPDATE workflows SET use_count = use_count + 1, last_used = CURRENT_TIMESTAMP()
                 WHERE workflow_id = %s
             """, (workflow_id,))
+        finally:
+            cursor.close()
+    
+    def add_step(self, workflow_id: str, action_type: str, action_data: Dict, 
+                screenshot_before=None, screenshot_after=None, visual_context: Dict = None):
+        """Add a step to workflow"""
+        cursor = self.conn.cursor()
+        try:
+            # Get current step count
+            cursor.execute("SELECT steps_count FROM workflows WHERE workflow_id = %s", (workflow_id,))
+            row = cursor.fetchone()
+            step_number = (row[0] + 1) if row else 1
+            
+            # Insert step
+            cursor.execute("""
+                INSERT INTO workflow_steps (workflow_id, step_number, action_type, action_data, visual_context)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                workflow_id,
+                step_number,
+                action_type,
+                json.dumps(action_data),
+                json.dumps(visual_context or {})
+            ))
+            
+            # Update workflow count
+            cursor.execute("""
+                UPDATE workflows 
+                SET steps_count = steps_count + 1
+                WHERE workflow_id = %s
+            """, (workflow_id,))
+            
+            print(f"  ✓ Added step: {action_type}")
         finally:
             cursor.close()
     

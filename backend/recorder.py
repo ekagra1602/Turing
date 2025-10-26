@@ -83,15 +83,6 @@ class WorkflowRecorder:
         self.is_recording = True
         self.last_action_time = time.time()
         
-        print("=" * 70)
-        print(f"🔴 RECORDING: {workflow_name}")
-        print("=" * 70)
-        print("Perform your workflow naturally.")
-        print("I'll watch and learn!")
-        print()
-        print("When done, call: recorder.stop_recording()")
-        print("=" * 70)
-        
         return self.workflow_id
     
     def stop_recording(self):
@@ -113,37 +104,34 @@ class WorkflowRecorder:
         print(f"⏹  STOPPED RECORDING: {self.workflow_name}")
         print("=" * 70)
         
-        # Analyze and finalize
+        # Get workflow data
         workflow_data = self.memory.get_workflow(self.workflow_id)
-        print(f"\nRecorded {workflow_data['steps_count']} raw steps")
+        steps_count = workflow_data['steps_count']
+        print(f"\nRecorded {steps_count} raw steps")
         
-        # 🧠 SEMANTIC ANALYSIS - Understand what was recorded
-        print("\n🧠 Analyzing workflow to understand intent...")
+        # Simple VLM analysis - just get overall intention
+        print("\n🧠 Understanding workflow...")
+        
         try:
-            from semantic_action_analyzer import SemanticActionAnalyzer
+            intention = self._analyze_with_vlm()
+            print(f"   ✓ Goal: {intention}")
             
-            analyzer = SemanticActionAnalyzer(verbose=True)
-            analysis_result = analyzer.analyze_workflow(self.workflow_id, self.memory)
-            
-            semantic_actions = analysis_result['semantic_actions']
-            parameters = analysis_result['parameters']
-            
-            # Store semantic actions in workflow
+            # Save workflow with intention
             self.memory.finalize_workflow(
                 self.workflow_id,
-                parameters=parameters,
-                semantic_actions=semantic_actions  # NEW!
+                parameters=[],
+                semantic_actions=[{
+                    'overall_intention': intention,
+                    'steps_count': steps_count
+                }]
             )
-            
-            print(f"\n✅ Workflow understood!")
-            print(f"   {len(semantic_actions)} semantic actions")
-            print(f"   {len(parameters)} parameters identified")
+            print(f"\n✅ Workflow saved!")
             
         except Exception as e:
-            print(f"\n⚠️  Semantic analysis failed: {e}")
-            print("   Workflow saved with raw actions only")
-            # Fallback: finalize without semantic actions
+            print(f"⚠️  Analysis skipped: {e}")
+            # Still save workflow
             self.memory.finalize_workflow(self.workflow_id)
+            print(f"\n✅ Workflow saved (without analysis)!")
         
         workflow_id = self.workflow_id
         self.workflow_id = None
@@ -180,7 +168,7 @@ class WorkflowRecorder:
     
     def _on_mouse_click(self, x, y, button, pressed):
         """Handle mouse click events."""
-        if not self.is_recording:
+        if not self.is_recording or not self.workflow_id:
             return
         
         # Only record button press (not release)
@@ -233,7 +221,7 @@ class WorkflowRecorder:
     
     def _on_mouse_scroll(self, x, y, dx, dy):
         """Handle mouse scroll events."""
-        if not self.is_recording:
+        if not self.is_recording or not self.workflow_id:
             return
         
         # Debounce
@@ -284,7 +272,7 @@ class WorkflowRecorder:
     
     def _on_key_press(self, key):
         """Handle keyboard events."""
-        if not self.is_recording:
+        if not self.is_recording or not self.workflow_id:
             return
         
         # For now, we'll track special keys and shortcuts
@@ -359,6 +347,80 @@ class WorkflowRecorder:
         )
         
         print(f"📝 Annotation added: {text}")
+    
+    def _analyze_with_vlm(self) -> str:
+        """Use Gemini VLM to understand workflow intention from screenshots"""
+        import os
+        from google import genai
+        from google.genai.types import GenerateContentConfig
+        
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return "Workflow recording"
+        
+        client = genai.Client(api_key=api_key)
+        workflow_dir = self.memory.storage_dir / self.workflow_id / "steps"
+        
+        # Get first and last screenshots
+        screenshots = sorted(workflow_dir.glob("*_after.png"))
+        if not screenshots:
+            return "Workflow recording"
+        
+        first_screenshot = screenshots[0]
+        last_screenshot = screenshots[-1]
+        
+        # Load images
+        from PIL import Image
+        img1 = Image.open(first_screenshot)
+        img2 = Image.open(last_screenshot)
+        
+        # Convert to base64
+        import base64
+        from io import BytesIO
+        
+        def img_to_base64(img):
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            return base64.b64encode(buffered.getvalue()).decode()
+        
+        img1_b64 = img_to_base64(img1)
+        img2_b64 = img_to_base64(img2)
+        
+        # Ask Gemini
+        prompt = f"""Analyze these before/after screenshots of a user workflow.
+
+First screenshot: Start of workflow
+Last screenshot: End of workflow
+
+Based on what changed, what was the user trying to accomplish? 
+
+Respond with ONE concise sentence (max 8 words) describing the goal.
+
+Examples:
+- "Download assignment from Canvas"
+- "Search GitHub for React code"
+- "Open Twitter and view feed"
+- "Navigate to project settings"
+
+Be specific but brief."""
+
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=[
+                    {"role": "user", "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/png", "data": img1_b64}},
+                        {"inline_data": {"mime_type": "image/png", "data": img2_b64}}
+                    ]}
+                ],
+                config=GenerateContentConfig(temperature=0.3, max_output_tokens=30)
+            )
+            
+            intention = response.text.strip().replace('"', '').replace("'", "")
+            return intention[:100]
+        except:
+            return "Workflow recording"
 
 
 def interactive_recording_demo():
@@ -428,4 +490,22 @@ if __name__ == "__main__":
         print("  recorder.start_recording('My Workflow')")
         print("  # ... user performs actions ...")
         print("  recorder.stop_recording()")
+    
+def usage():
+    """Print usage information"""
+    print()
+    print("=" * 70)
+    print("Workflow Recorder")
+    print("=" * 70)
+    print()
+    print("Usage:")
+    print("  python recorder.py demo          # Run interactive demo")
+    print()
+    print("Or import and use programmatically:")
+    print("  from recorder import WorkflowRecorder")
+    print("  recorder = WorkflowRecorder()")
+    print("  recorder.start_recording('My Workflow')")
+    print("  # ... user performs actions ...")
+    print("  recorder.stop_recording()")
+
 

@@ -96,7 +96,10 @@ class SemanticActionAnalyzer:
         
         # Analyze each group with visual context
         semantic_actions = []
-        workflow_dir = memory.storage_dir / workflow_id
+        # Get workflow_dir if local storage, otherwise None
+        workflow_dir = getattr(memory, 'storage_dir', None)
+        if workflow_dir:
+            workflow_dir = workflow_dir / workflow_id
         
         for i, group in enumerate(action_groups, 1):
             if self.verbose:
@@ -129,9 +132,19 @@ class SemanticActionAnalyzer:
             if self.verbose:
                 print("   No parameters identified")
         
+        # Generate overall workflow intention
+        if self.verbose:
+            print("\n🎯 Understanding overall intention...")
+        
+        overall_intention = self._generate_overall_intention(semantic_actions)
+        
+        if overall_intention and self.verbose:
+            print(f"   ✓ Goal: {overall_intention}")
+        
         return {
             'semantic_actions': semantic_actions,
-            'parameters': parameters
+            'parameters': parameters,
+            'overall_intention': overall_intention
         }
     
     def _group_actions(self, raw_steps: List[Dict]) -> List[List[Dict]]:
@@ -196,24 +209,25 @@ class SemanticActionAnalyzer:
         first_step = group[0]
         action_type = first_step['action_type']
         
-        # Load screenshots for visual context
+        # Load screenshots for visual context (only for local storage)
         screenshot_before = None
         screenshot_after = None
         
-        try:
-            if first_step.get('screenshot_before'):
-                img_path = workflow_dir / "steps" / first_step['screenshot_before']
-                if img_path.exists():
-                    screenshot_before = Image.open(img_path)
-            
-            last_step = group[-1]
-            if last_step.get('screenshot_after'):
-                img_path = workflow_dir / "steps" / last_step['screenshot_after']
-                if img_path.exists():
-                    screenshot_after = Image.open(img_path)
-        except Exception as e:
-            if self.verbose:
-                print(f"   ⚠️  Could not load screenshots: {e}")
+        if workflow_dir:
+            try:
+                if first_step.get('screenshot_before'):
+                    img_path = workflow_dir / "steps" / first_step['screenshot_before']
+                    if img_path.exists():
+                        screenshot_before = Image.open(img_path)
+                
+                last_step = group[-1]
+                if last_step.get('screenshot_after'):
+                    img_path = workflow_dir / "steps" / last_step['screenshot_after']
+                    if img_path.exists():
+                        screenshot_after = Image.open(img_path)
+            except Exception as e:
+                if self.verbose:
+                    print(f"   ⚠️  Could not load screenshots: {e}")
         
         # Analyze based on action type
         if action_type == 'key_press':
@@ -560,6 +574,51 @@ Examples:
                     })
         
         return parameters
+    
+    def _generate_overall_intention(self, semantic_actions: List[Dict]) -> str:
+        """Generate high-level understanding of workflow goal"""
+        if not semantic_actions:
+            return "Unknown workflow"
+        
+        # Create summary of actions
+        action_summary = []
+        for action in semantic_actions[:10]:  # First 10 actions
+            desc = action.get('description', action.get('semantic_type', ''))
+            action_summary.append(desc)
+        
+        summary_text = "\n".join(f"{i+1}. {a}" for i, a in enumerate(action_summary))
+        
+        # Ask Gemini for high-level goal
+        prompt = f"""Analyze this sequence of user actions and determine the HIGH-LEVEL GOAL or intention.
+
+Actions performed:
+{summary_text}
+
+What is the user trying to accomplish? Respond with a single concise sentence describing the overall goal.
+
+Examples:
+- "Navigate to GitHub repository and view code"
+- "Download assignment from Canvas"
+- "Search for React tutorials"
+- "Open Twitter application"
+
+Be specific but concise (max 10 words)."""
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=GenerateContentConfig(temperature=0.3, max_output_tokens=50)
+            )
+            
+            intention = response.text.strip()
+            # Clean up
+            intention = intention.replace('"', '').replace("'", "").strip()
+            return intention[:100]  # Max 100 chars
+            
+        except Exception as e:
+            # Fallback: first action description
+            return semantic_actions[0].get('description', 'Workflow')
 
 
 def test_semantic_analyzer():
