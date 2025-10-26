@@ -1,0 +1,43 @@
+================================================================================
+🚀 AgentFlow - CalHacks Demo Setup
+================================================================================
+
+STEP 1: Add your Snowflake password to .env
+   
+   Edit: backend/.env
+   Line 8: SNOWFLAKE_PASSWORD=PUT_YOUR_PASSWORD_HERE
+   
+   Replace with your actual password
+
+================================================================================
+
+STEP 2: Install dependencies
+
+   pip3 install -r requirements_fast.txt
+
+================================================================================
+
+STEP 3: Test Snowflake connection
+
+   python3 snowflake_working.py
+
+   Should see: ✅ Connected to Snowflake
+
+================================================================================
+
+STEP 4: Start the demo!
+
+   python3 workflow_cli.py
+
+   Then follow DEMO_GUIDE.md
+
+================================================================================
+
+TROUBLESHOOTING:
+
+- "SNOWFLAKE_PASSWORD not set" → Edit .env file, add password
+- "Module not found" → Run: pip3 install -r requirements_fast.txt
+- Snowflake fails → Check password is correct in .env
+
+================================================================================
+

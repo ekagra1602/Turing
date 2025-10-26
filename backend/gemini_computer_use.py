@@ -109,7 +109,7 @@ class GeminiComputerUse:
             prompt = f"""You are controlling a computer screen. The user wants to click on: "{target}"
 
 Please analyze this screenshot and tell me:
-1. Can you see the "{target}"? (yes/no)
+1. Can you see the "{target}" in the MAIN APPLICATION WINDOW? (yes/no)
 2. If yes, what are the EXACT pixel coordinates (x, y) where I should click?
 3. A brief description of what you see at that location
 
@@ -124,11 +124,17 @@ Respond in JSON format:
     "confidence": 0.0-1.0
 }}
 
-IMPORTANT: 
+CRITICAL RULES: 
+- Focus ONLY on the main application window (browser, app, etc.)
+- IGNORE any terminal windows or console output showing log messages
+- IGNORE any text that mentions "Step", "Clicking", "address bar" from logs
+- Look for the ACTUAL UI element in the application, not text descriptions
 - Coordinates must be in pixels (not percentages)
 - (0, 0) is top-left corner
 - Give the CENTER of the clickable element
-- Be precise - accuracy is critical!"""
+- Be precise - accuracy is critical!
+
+Example: If looking for "address bar", find the actual URL/search bar in the browser window, NOT text that says "address bar" in a terminal."""
 
             # Call Gemini
             response = self.client.models.generate_content(

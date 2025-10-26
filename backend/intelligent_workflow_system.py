@@ -9,8 +9,11 @@ This is the core system that enables:
 
 import os
 import json
+import time
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
+
+import pyautogui
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -103,15 +106,16 @@ class IntelligentWorkflowSystem:
         print(f"💬 USER REQUEST: {user_prompt}")
         print("=" * 70)
         
-        # Step 1: Find similar workflows
+        # Step 1: Find similar workflows (for guidance, not required)
         print("\n🔍 Finding similar workflows...")
         matches = self.matcher.find_similar_workflows(user_prompt, top_k=3, min_similarity=0.3)
         
         if not matches:
-            print("\n❌ No matching workflows found!")
-            print("\n💡 Tip: Record a workflow first:")
-            print("   system.record_workflow('workflow name')")
-            return False
+            print("\n⚠️  No matching workflows found")
+            print("   → Executing request directly using Gemini...\n")
+            
+            # Execute directly without workflow matching
+            return self._execute_direct(user_prompt, confirm_steps)
         
         # Show matches
         print(f"\n✓ Found {len(matches)} similar workflow(s):")
@@ -163,6 +167,211 @@ class IntelligentWorkflowSystem:
         )
         
         return success
+    
+    def _execute_direct(self, user_prompt: str, confirm_steps: bool = False) -> bool:
+        """
+        Execute a request directly using Gemini without workflow matching
+        
+        This is used when no matching workflows exist.
+        Gemini breaks down the request into actions and executes them.
+        
+        Args:
+            user_prompt: User's natural language request
+            confirm_steps: Ask before each step
+        
+        Returns:
+            True if successful
+        """
+        if not self.gemini_client:
+            print("❌ Gemini client not available")
+            return False
+        
+        print("🤖 Analyzing request and planning actions...")
+        
+        # Ask Gemini to break down the request into actionable steps
+        planning_prompt = f"""You are a computer automation assistant. The user wants to: "{user_prompt}"
+
+Break this down into specific, actionable steps that can be executed on a computer.
+
+Return a JSON array of actions:
+[
+    {{
+        "action_type": "open_application" | "click" | "type" | "key" | "scroll" | "wait",
+        "target": "description of what to interact with (for click/open_application)",
+        "value": "text to type (for type) or key name (for key) or wait seconds (for wait)",
+        "description": "human-readable description of this step"
+    }},
+    ...
+]
+
+Rules:
+- Be specific (e.g., "Chrome browser" not just "browser")
+- For clicks, describe the element clearly (e.g., "GitHub search bar", "username field")
+- Include reasonable wait times between actions
+- Keep it simple - 3-10 steps max
+- Only include steps that are directly needed
+
+Example for "open github":
+[
+    {{"action_type": "open_application", "target": "Chrome", "description": "Open web browser"}},
+    {{"action_type": "wait", "value": "2", "description": "Wait for browser to load"}},
+    {{"action_type": "click", "target": "address bar", "description": "Click address bar"}},
+    {{"action_type": "type", "value": "github.com", "description": "Type GitHub URL"}},
+    {{"action_type": "key", "value": "enter", "description": "Press Enter to navigate"}}
+]
+
+Important:
+- For "open_application", use Raycast (Option + Space) on macOS
+- For browser navigation, just use the browser name (e.g., "Chrome", "Brave", "Safari")
+- Be very specific with click targets (e.g., "address bar at top of browser window")
+"""
+        
+        try:
+            response = self.gemini_client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=planning_prompt,
+                config=GenerateContentConfig(temperature=0.1, max_output_tokens=2048)
+            )
+            
+            content = response.text
+            
+            # Extract JSON
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            actions = json.loads(content)
+            
+            if not isinstance(actions, list) or not actions:
+                print("❌ Could not generate action plan")
+                return False
+            
+            print(f"\n✓ Generated {len(actions)} actions\n")
+            
+            # Show action plan
+            if self.verbose:
+                print("📋 Action Plan:")
+                print("-" * 70)
+                for i, action in enumerate(actions, 1):
+                    print(f"{i}. {action.get('description', action.get('action_type'))}")
+                print("-" * 70)
+                print()
+            
+            # Confirm execution?
+            if confirm_steps:
+                response = input("Proceed with execution? [y/n]: ").lower()
+                if response != 'y':
+                    print("❌ Execution cancelled")
+                    return False
+            
+            # Execute each action
+            print("🚀 Executing actions...\n")
+            print("⚠️  Minimizing terminal to prevent focus issues...")
+            print("   (Terminal will auto-restore after execution)\n")
+            
+            # Minimize terminal window to prevent typing in it
+            try:
+                pyautogui.hotkey('command', 'm')  # Minimize window on Mac
+                time.sleep(0.5)
+            except:
+                pass
+            
+            for i, action in enumerate(actions, 1):
+                action_type = action.get('action_type', '').lower()
+                target = action.get('target', '')
+                value = action.get('value', '')
+                description = action.get('description', action_type)
+                
+                print(f"📍 Step {i}/{len(actions)}: {description}")
+                
+                try:
+                    if action_type == "open_application":
+                        # Use pyautogui to open application
+                        print(f"   🚀 Opening: {target}")
+                        # Use Raycast (option + space) instead of Spotlight
+                        pyautogui.hotkey('option', 'space')
+                        time.sleep(0.7)  # Wait for Raycast to open
+                        pyautogui.write(target, interval=0.05)
+                        time.sleep(0.5)  # Wait for results
+                        pyautogui.press('return')
+                        time.sleep(2.5)  # Wait for app to fully open and become focused
+                        print("   ✓ Done")
+                    
+                    elif action_type == "click":
+                        # Use Gemini to find and click element
+                        print(f"   🖱️  Clicking: {target}")
+                        success = self.executor.gemini.click(target)
+                        if success:
+                            print("   ✓ Click successful")
+                        else:
+                            print("   ⚠️  Click may have failed")
+                        time.sleep(0.5)
+                    
+                    elif action_type == "type":
+                        # Type text
+                        print(f"   ⌨️  Typing: {value[:50]}...")
+                        # Small delay to ensure focus is correct
+                        time.sleep(0.2)
+                        pyautogui.write(value, interval=0.05)
+                        print("   ✓ Done")
+                        time.sleep(0.3)
+                    
+                    elif action_type == "key":
+                        # Press key
+                        print(f"   ⌨️  Pressing: {value}")
+                        pyautogui.press(value)
+                        print("   ✓ Done")
+                        time.sleep(0.5)
+                    
+                    elif action_type == "wait":
+                        # Wait
+                        wait_time = float(value) if value else 1.0
+                        print(f"   ⏳ Waiting {wait_time}s...")
+                        time.sleep(wait_time)
+                        print("   ✓ Done")
+                    
+                    elif action_type == "scroll":
+                        # Scroll
+                        print(f"   📜 Scrolling...")
+                        pyautogui.scroll(-300)  # Scroll down
+                        print("   ✓ Done")
+                        time.sleep(0.5)
+                    
+                    else:
+                        print(f"   ⚠️  Unknown action type: {action_type}")
+                
+                except Exception as e:
+                    print(f"   ❌ Error: {e}")
+                    if not confirm_steps:
+                        # Continue anyway
+                        continue
+                    else:
+                        response = input("   Continue? [y/n]: ").lower()
+                        if response != 'y':
+                            print("❌ Execution stopped")
+                            return False
+                
+                print()
+            
+            print("=" * 70)
+            print("✅ EXECUTION COMPLETED")
+            print("=" * 70)
+            
+            # Bring terminal back to focus
+            try:
+                # Click on terminal in dock or use Cmd+Tab
+                time.sleep(1)
+            except:
+                pass
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Direct execution failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def _extract_parameters(self, user_prompt: str, workflow: Dict) -> Dict[str, str]:
         """

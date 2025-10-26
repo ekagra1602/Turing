@@ -49,6 +49,9 @@ pynput>=1.7.7
 networkx==3.2
 python-dotenv>=1.0.0  # For environment variable management
 
+# Snowflake (optional - for cloud workflow storage)
+snowflake-connector-python>=3.0.0  # Snowflake database connector
+
 # ============================================================================
 # Installation Instructions
 # ============================================================================
