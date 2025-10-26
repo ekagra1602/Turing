@@ -115,11 +115,35 @@ class WorkflowRecorder:
         
         # Analyze and finalize
         workflow_data = self.memory.get_workflow(self.workflow_id)
-        print(f"\nRecorded {workflow_data['steps_count']} steps")
+        print(f"\nRecorded {workflow_data['steps_count']} raw steps")
         
-        # TODO: Auto-detect parameters using LLM analysis
-        # For now, finalize without parameters
-        self.memory.finalize_workflow(self.workflow_id)
+        # 🧠 SEMANTIC ANALYSIS - Understand what was recorded
+        print("\n🧠 Analyzing workflow to understand intent...")
+        try:
+            from semantic_action_analyzer import SemanticActionAnalyzer
+            
+            analyzer = SemanticActionAnalyzer(verbose=True)
+            analysis_result = analyzer.analyze_workflow(self.workflow_id, self.memory)
+            
+            semantic_actions = analysis_result['semantic_actions']
+            parameters = analysis_result['parameters']
+            
+            # Store semantic actions in workflow
+            self.memory.finalize_workflow(
+                self.workflow_id,
+                parameters=parameters,
+                semantic_actions=semantic_actions  # NEW!
+            )
+            
+            print(f"\n✅ Workflow understood!")
+            print(f"   {len(semantic_actions)} semantic actions")
+            print(f"   {len(parameters)} parameters identified")
+            
+        except Exception as e:
+            print(f"\n⚠️  Semantic analysis failed: {e}")
+            print("   Workflow saved with raw actions only")
+            # Fallback: finalize without semantic actions
+            self.memory.finalize_workflow(self.workflow_id)
         
         workflow_id = self.workflow_id
         self.workflow_id = None

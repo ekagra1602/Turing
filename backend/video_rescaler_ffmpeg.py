@@ -70,75 +70,125 @@ def rescale_video_to_duration(recording_path: Path, show_progress: bool = True) 
         print(f"   Actual recording duration: {actual_duration:.2f}s")
         print(f"   Speed ratio: {actual_duration / original_duration:.2f}x")
     
-    # Check if rescaling is needed
+    # Check if video has constant frame rate (not distorted by setpts)
+    # We need to check if frame timing is correct, not just duration
+    needs_reencoding = False
+    
     if original_duration > 0:
         duration_diff = abs(actual_duration - original_duration)
-        if duration_diff < 0.5:  # Less than 0.5 second difference
+        
+        # Get actual FPS from video file
+        probe_fps_cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=r_frame_rate',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(video_path)
+        ]
+        try:
+            result = subprocess.run(probe_fps_cmd, capture_output=True, text=True, timeout=10)
+            fps_str = result.stdout.strip()
+            # Parse fraction like "173/6"
+            if '/' in fps_str:
+                num, denom = fps_str.split('/')
+                video_fps = float(num) / float(denom)
+            else:
+                video_fps = float(fps_str)
+        except:
+            video_fps = 30  # Default fallback
+        
+        # Get frame count
+        probe_count_cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-count_frames',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=nb_read_frames',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(video_path)
+        ]
+        try:
+            result = subprocess.run(probe_count_cmd, capture_output=True, text=True, timeout=10)
+            frame_count = int(result.stdout.strip())
+        except:
+            frame_count = 0
+        
+        # Calculate what FPS should be for proper frame extraction
+        expected_fps = frame_count / actual_duration if actual_duration > 0 else video_fps
+        
+        # Check if video needs re-encoding
+        # Re-encode if:c
+        # 1. FPS metadata doesn't match expected FPS (off by more than 10%)
+        # 2. Video was previously rescaled with setpts (check for "corrected_fps" flag)
+        events_path = recording_path / "events.json"
+        was_rescaled = False
+        if events_path.exists():
+            try:
+                with open(events_path, 'r') as f:
+                    events_data = json.load(f)
+                was_rescaled = events_data.get('corrected_fps', False)
+            except:
+                pass
+        
+        fps_mismatch = abs(video_fps - expected_fps) / expected_fps > 0.1 if expected_fps > 0 else False
+        
+        if duration_diff < 0.5 and not fps_mismatch and not was_rescaled:
             if show_progress:
-                print(f"   ✅ Video duration is already correct (diff: {duration_diff:.2f}s)")
-            
-            # Even if duration is correct, update events.json with correct FPS
-            events_path = recording_path / "events.json"
-            if events_path.exists():
-                try:
-                    with open(events_path, 'r') as f:
-                        events_data = json.load(f)
-                    
-                    # Get frame count
-                    probe_cmd = [
-                        'ffprobe',
-                        '-v', 'error',
-                        '-count_frames',
-                        '-select_streams', 'v:0',
-                        '-show_entries', 'stream=nb_read_frames',
-                        '-of', 'default=noprint_wrappers=1:nokey=1',
-                        str(video_path)
-                    ]
-                    result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
-                    frame_count = int(result.stdout.strip())
-                    
-                    # Calculate correct FPS
-                    actual_fps = frame_count / actual_duration
-                    
-                    # Update events.json
-                    events_data['fps'] = actual_fps
-                    events_data['corrected_fps'] = True
-                    events_data['original_fps'] = events_data.get('fps', 30)
-                    
-                    with open(events_path, 'w') as f:
-                        json.dump(events_data, f, indent=2)
-                    
-                    if show_progress:
-                        print(f"   📝 Updated events.json with corrected FPS: {actual_fps:.2f}")
-                except Exception as e:
-                    if show_progress:
-                        print(f"   ⚠️  Could not update events.json: {e}")
-            
+                print(f"   ✅ Video already has correct timing (duration: {original_duration:.2f}s, FPS: {video_fps:.2f})")
             return True
+        
+        if was_rescaled or fps_mismatch:
+            needs_reencoding = True
+            if show_progress:
+                print(f"   ⚠️  Video needs re-encoding for proper frame timing")
+                print(f"   - Current FPS: {video_fps:.2f}")
+                print(f"   - Expected FPS: {expected_fps:.2f}")
+                if was_rescaled:
+                    print(f"   - Previous rescaling used distorting method")
     
-    # Calculate speed filter for ffmpeg
-    # If video is 12s but should be 43s, we need to slow it down by 43/12 = 3.58x
-    # ffmpeg setpts filter: larger multiplier = slower video
-    speed_multiplier = actual_duration / original_duration if original_duration > 0 else 1.0
+    # Get frame count to calculate proper output FPS
+    probe_cmd = [
+        'ffprobe',
+        '-v', 'error',
+        '-count_frames',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=nb_read_frames',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        str(video_path)
+    ]
+    try:
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+        frame_count = int(result.stdout.strip())
+    except Exception as e:
+        print(f"   ❌ Could not count frames: {e}")
+        return False
+    
+    # Calculate the target FPS to match actual duration
+    # This is CRITICAL: we need to re-encode at constant FPS, not just stretch timestamps
+    target_fps = frame_count / actual_duration
     
     if show_progress:
         print(f"   ")
         print(f"   🔄 Re-encoding video with ffmpeg...")
+        print(f"   - Frame count: {frame_count}")
         print(f"   - Target duration: {actual_duration:.2f}s")
-        print(f"   - Speed multiplier: {speed_multiplier:.3f}x")
+        print(f"   - Target FPS: {target_fps:.2f}")
+        print(f"   - Method: Re-encode at constant frame rate")
     
     # Create temporary output path
     temp_path = recording_path / "screen_recording_rescaled.mp4"
     
-    # Use ffmpeg to rescale video
-    # setpts filter changes presentation timestamp to slow down/speed up video
-    # PTS*multiplier: larger multiplier = slower video
+    # CRITICAL FIX: Re-encode video at constant FPS instead of using setpts
+    # setpts distorts frame timing and breaks OpenCV frame seeking
+    # Instead, we re-encode with -r flag to set exact output FPS
     ffmpeg_cmd = [
         'ffmpeg',
         '-i', str(video_path),
-        '-vf', f'setpts={speed_multiplier}*PTS',  # Video filter to change speed
-        '-an',  # No audio (we don't have audio anyway)
-        '-y',   # Overwrite output file
+        '-r', str(target_fps),  # Set output frame rate (re-encodes frames)
+        '-vsync', 'cfr',        # Constant frame rate (ensures even spacing)
+        '-an',                  # No audio
+        '-y',                   # Overwrite output file
         str(temp_path)
     ]
     

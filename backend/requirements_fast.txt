@@ -1,0 +1,82 @@
+# AgentFlow Computer Use - Requirements
+# Gemini 2.5 Flash with native screen understanding
+
+# ============================================================================
+# PRIMARY: Gemini 2.5 Flash Computer Use
+# ============================================================================
+google-genai  # Gemini 2.5 Flash with native computer use capabilities
+
+# ============================================================================
+# OPTIONAL: Fast LLM (Groq - for additional reasoning tasks)
+# ============================================================================
+groq>=0.4.0  # Optional: Ultra-fast LLM for reasoning
+
+# ============================================================================
+# Computer Vision & Image Processing
+# ============================================================================
+numpy<2  # Pin to 1.x for opencv compatibility
+opencv-python==4.8.1.78
+pillow>=10.2.0
+imagehash==4.3.1
+
+# Screen capture
+mss==9.0.1  # Thread-safe screen capture
+pyautogui>=0.9.54
+
+# ============================================================================
+# Text Processing (optional, for fuzzy matching if needed)
+# ============================================================================
+# fuzzywuzzy==0.18.0
+# python-Levenshtein>=0.27.0
+
+# ============================================================================
+# Additional Tools (optional)
+# ============================================================================
+# playwright  # For browser automation
+# termcolor   # For colored terminal output
+
+# Machine Learning & Embeddings (REQUIRED for semantic workflow matching)
+sentence-transformers>=2.7.0  # Semantic similarity for workflow matching
+# transformers>=4.44.0
+# torch==2.8.0
+# faiss-cpu==1.11.0
+# scikit-learn>=1.4.0
+
+# Action Monitoring
+pynput>=1.7.7
+
+# Utilities
+networkx==3.2
+python-dotenv>=1.0.0  # For environment variable management
+
+# ============================================================================
+# Installation Instructions
+# ============================================================================
+# 
+# 1. Install requirements:
+#    pip install -r requirements_fast.txt
+#
+# 2. Set API key:
+#    export GOOGLE_API_KEY='your_google_key_here'
+#    Get key at: https://aistudio.google.com/apikey
+#
+# 3. Test installation:
+#    python gemini_computer_use.py
+#
+# 4. (Optional) Set Groq API key for fast reasoning:
+#    export GROQ_API_KEY='your_groq_key_here'
+#    Get key at: https://console.groq.com/keys
+#
+# ============================================================================
+# Performance
+# ============================================================================
+#
+# Gemini 2.5 Flash Computer Use:
+#   - Native screen understanding (no OCR needed!)
+#   - Accurate element location & clicking
+#   - ~1-2s per action (vision + reasoning + execution)
+#   - Works on ANY hardware (server-side processing)
+#   - Perfect for slow laptops!
+#
+# ============================================================================
+

@@ -165,13 +165,14 @@ class VisualWorkflowMemory:
         
         print(f"  ✓ Added step {step_num}: {action_type}")
     
-    def finalize_workflow(self, workflow_id: str, parameters: List[Dict] = None):
+    def finalize_workflow(self, workflow_id: str, parameters: List[Dict] = None, semantic_actions: List[Dict] = None):
         """
         Finalize a workflow recording and mark it ready for use.
         
         Args:
             workflow_id: ID of workflow to finalize
             parameters: List of identified parameters (name, type, location, etc.)
+            semantic_actions: List of semantic actions (high-level understanding)
         """
         workflow_dir = self.storage_dir / workflow_id
         
@@ -186,6 +187,15 @@ class VisualWorkflowMemory:
         # Add parameters if provided
         if parameters:
             metadata['parameters'] = parameters
+        
+        # Add semantic actions if provided
+        if semantic_actions:
+            metadata['semantic_actions'] = semantic_actions
+            
+            # Also save to separate file for easy access
+            semantic_file = workflow_dir / "semantic_actions.json"
+            with open(semantic_file, 'w') as f:
+                json.dump(semantic_actions, f, indent=2)
         
         # Save updated metadata
         with open(workflow_dir / "metadata.json", 'w') as f:

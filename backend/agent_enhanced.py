@@ -18,6 +18,8 @@ from recorder import WorkflowRecorder
 from visual_analyzer import VisualAnalyzer
 from visual_executor import VisualExecutor
 
+from dotenv import load_dotenv
+load_dotenv()
 
 class EnhancedAgentInterface(AgentInterface):
     """
