@@ -68,7 +68,7 @@ class RecordingProcessor:
     """
     
     def __init__(self, recordings_dir: Path = None):
-        self.analyzer = VisualAnalyzer(use_easyocr=True)
+        self.analyzer = VisualAnalyzer()
         self.memory = VisualWorkflowMemory()
         
         # Recordings directory

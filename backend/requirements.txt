@@ -3,11 +3,9 @@ playwright
 termcolor
 pyautogui
 
-# Computer Vision & OCR
+# Computer Vision (VLM-powered, no OCR needed)
 numpy<2  # Pin to 1.x for compatibility with opencv-python
 opencv-python==4.8.1.78
-pytesseract==0.3.10
-easyocr==1.7.0
 pillow>=10.2.0
 imagehash==4.3.1
 mss==9.0.1  # Thread-safe screen capture

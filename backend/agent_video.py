@@ -46,7 +46,7 @@ class AgentFlowVideo:
         
         # Components
         self.memory = VisualWorkflowMemory()
-        self.analyzer = VisualAnalyzer(use_easyocr=True)
+        self.analyzer = VisualAnalyzer()
         self.processor = RecordingProcessor()
         self.executor = RobustWorkflowExecutor(analyzer=self.analyzer)
         

@@ -44,7 +44,7 @@ class AgentFlowPro:
         self.visual_memory = VisualWorkflowMemory()
         
         # Enhanced components
-        self.analyzer = VisualAnalyzer(use_easyocr=True)
+        self.analyzer = VisualAnalyzer()
         self.context_extractor = EnhancedContextExtractor(
             visual_analyzer=self.analyzer,
             use_embeddings=True

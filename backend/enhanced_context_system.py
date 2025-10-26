@@ -165,42 +165,14 @@ class EnhancedContextExtractor:
         """
         Extract all visible text elements from screenshot.
         This builds a structured representation of what's on screen.
+        
+        Note: This method is deprecated as VLMs handle element extraction directly.
+        Keeping empty implementation for backwards compatibility.
         """
-        ocr_results = self.visual_analyzer.ocr_image(screenshot)
-        
+        # VLMs handle element extraction directly, no need for OCR
         elements = []
-        for result in ocr_results:
-            bbox = result['bbox']
-            text = result['text']
-            conf = result['confidence']
-            
-            # Calculate center
-            center_x = int(sum([p[0] for p in bbox]) / 4)
-            center_y = int(sum([p[1] for p in bbox]) / 4)
-            
-            # Create visual signature for this element
-            left = max(0, center_x - 50)
-            top = max(0, center_y - 25)
-            right = min(screenshot.width, center_x + 50)
-            bottom = min(screenshot.height, center_y + 25)
-            
-            element_crop = screenshot.crop((left, top, right, bottom))
-            visual_sig = str(imagehash.average_hash(element_crop))
-            
-            # Classify element type (button, link, etc.)
-            element_type = self._classify_element_type(text, bbox)
-            
-            element = VisualElement(
-                text=text,
-                confidence=conf,
-                bbox=bbox,
-                center=(center_x, center_y),
-                element_type=element_type,
-                visual_signature=visual_sig
-            )
-            
-            elements.append(element)
         
+        # Return empty list - VLMs will handle this in the recording processor
         return elements
     
     def _identify_clicked_element(self,
