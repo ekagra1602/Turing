@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Room, RoomEvent, Track } from "livekit-client";
+import { Room, RoomEvent, Track, TrackEvent } from "livekit-client";
 import { AudioAnalyser } from "@/lib/audioAnalyser";
 import VoiceOrb from "@/components/VoiceOrb";
 import { motion } from "framer-motion";
@@ -82,7 +82,7 @@ export default function Home() {
             startAudioLevelMonitoring();
           }
 
-          track.on(Track.Events.Ended, () => {
+          track.on(TrackEvent.Ended, () => {
             setIsSpeaking(false);
             audioElement.remove();
             stopAudioLevelMonitoring();
@@ -151,84 +151,74 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      {/* Background gradient effect */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-blue-500/10 via-purple-500/5 to-transparent rounded-full blur-3xl" />
-      </div>
+    <main className="relative w-full h-screen overflow-hidden" style={{ background: '#0a0a0a' }}>
+      {/* Voice Orb - takes full screen */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      >
+        <VoiceOrb
+          audioLevel={audioLevel}
+          isListening={isListening}
+          isSpeaking={isSpeaking}
+        />
+      </motion.div>
 
-      {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center gap-12">
-        {/* Voice Orb */}
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-        >
-          <VoiceOrb
-            audioLevel={audioLevel}
-            isListening={isListening}
-            isSpeaking={isSpeaking}
-          />
-        </motion.div>
-
-        {/* Connection controls */}
+      {/* Connection controls - centered at top */}
+      <div className="absolute top-0 left-0 right-0 flex justify-center pt-12 z-20">
         <motion.div
           className="flex flex-col items-center gap-4"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.5 }}
         >
-          {!isConnected ? (
-            <button
-              onClick={connectToRoom}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-full font-semibold text-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
-            >
-              Start Voice Session
-            </button>
-          ) : (
-            <button
-              onClick={disconnect}
-              className="px-8 py-4 bg-red-600 hover:bg-red-700 rounded-full font-semibold text-lg shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
-            >
-              End Session
-            </button>
-          )}
-
-          {error && (
-            <div className="text-red-400 text-sm max-w-md text-center bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">
-              {error}
-            </div>
-          )}
-        </motion.div>
-
-        {/* Instructions */}
-        {isConnected && (
-          <motion.div
-            className="text-center max-w-md text-gray-400 text-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
+        {!isConnected ? (
+          <button
+            onClick={connectToRoom}
+            className="group relative px-8 py-3 bg-white/10 hover:bg-white/15 rounded-full font-normal text-sm text-white/90 backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] border border-white/10 hover:border-white/20"
+            style={{
+              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+            }}
           >
-            <p className="mb-2">Try saying:</p>
-            <div className="flex flex-col gap-1 text-gray-500">
-              <p>"Hey AgentFlow, remember what I'm going to do now"</p>
-              <p>"Send an email to John"</p>
-              <p>"Open my Canvas class"</p>
-            </div>
-          </motion.div>
+            <span className="relative z-10">Start Voice Session</span>
+          </button>
+        ) : (
+          <button
+            onClick={disconnect}
+            className="group relative px-8 py-3 bg-white/5 hover:bg-white/10 rounded-full font-normal text-sm text-white/70 backdrop-blur-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] border border-white/5 hover:border-white/10"
+            style={{
+              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
+            }}
+          >
+            <span className="relative z-10">End Session</span>
+          </button>
         )}
 
-        {/* AgentFlow branding */}
-        <motion.div
-          className="absolute bottom-8 text-gray-600 text-sm font-medium"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-        >
-          AgentFlow Voice Assistant
+        {error && (
+          <div className="text-red-400 text-sm max-w-md text-center bg-red-900/20 border border-red-500/30 rounded-lg px-4 py-2 backdrop-blur-sm">
+            {error}
+          </div>
+        )}
         </motion.div>
       </div>
+
+      {/* Instructions - bottom overlay - hide when speaking/listening */}
+      {isConnected && !isSpeaking && !isListening && (
+        <motion.div
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 text-center max-w-lg px-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+        >
+          <p className="text-gray-500 text-sm mb-3">Try saying:</p>
+          <div className="flex flex-col gap-2 text-gray-600 text-sm">
+            <p>"Hey AgentFlow, remember what I'm going to do now"</p>
+            <p>"Send an email to John"</p>
+          </div>
+        </motion.div>
+      )}
     </main>
   );
 }
