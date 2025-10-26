@@ -1,0 +1,206 @@
+================================================================================
+  📋 QUICK GUIDE: Add Workday Hours Entry Workflow
+================================================================================
+
+This guide walks you through adding a hardcoded Workday workflow with exact
+clicks, just like we did for Gmail.
+
+================================================================================
+  STEP 1: RECORD YOUR WORKFLOW
+================================================================================
+
+Command:
+--------
+$ python simple_recorder.py
+
+Actions to perform after pressing F9:
+--------------------------------------
+1. Press Option+Space (Raycast)
+2. Type "brave browser"
+3. Press Enter
+4. Wait 2 seconds
+5. Press Cmd+L (focus address bar)
+6. Type your Workday URL (e.g., "mycompany.workday.com")
+7. Press Enter
+8. Wait for Workday to load (3-5 seconds)
+9. Click on time entry section
+10. Click on hours field
+11. Type hours (e.g., "8")
+12. Press Tab or click next field
+13. Type project code if needed
+14. Click Submit/Save button
+15. Press F10 to STOP recording
+
+When prompted:
+  Workflow name: enter workday hours
+  Description: Enter hours into Workday timesheet
+
+Output file will be saved as:
+  workflows/recorded_workflow_enter_workday_hours_<timestamp>.json
+
+Example filename:
+  workflows/recorded_workflow_enter_workday_hours_1761494523.json
+
+================================================================================
+  STEP 2: PARAMETERIZE THE WORKFLOW
+================================================================================
+
+Command:
+--------
+$ python parameterize_workday.py workflows/recorded_workflow_enter_workday_hours_XXXXX.json
+
+Replace XXXXX with your actual timestamp!
+
+This will:
+✓ Extract structural actions (clicks + navigation)
+✓ Remove character-by-character typing
+✓ Add parameter placeholders
+✓ Create: workflows/recorded_workflow_enter_workday_hours_XXXXX_parameterized.json
+
+Expected output:
+  Original: ~50 actions
+  Structural: ~15 actions
+  Parameters: HOURS, DATE, PROJECT_CODE, NOTES
+
+================================================================================
+  STEP 3: REVIEW THE PARAMETERIZED WORKFLOW
+================================================================================
+
+Open the parameterized JSON file and verify:
+  ✓ All clicks are preserved with exact coordinates
+  ✓ Placeholders are in the right order (HOURS before PROJECT_CODE, etc.)
+  ✓ Tab/Enter keys are preserved for navigation
+
+If needed, manually adjust placeholder names to match:
+  - HOURS (for hours entry)
+  - DATE (for date field)
+  - PROJECT_CODE (for project/task code)
+  - NOTES (for any notes/comments)
+
+================================================================================
+  STEP 4: ADD TO WORKFLOW TEMPLATES
+================================================================================
+
+1. Open workflow_templates.py
+
+2. Find the EMAIL WORKFLOWS section (around line 19)
+
+3. After the "send email via gmail" workflow, add a comma and paste the
+   template from WORKDAY_TEMPLATE_SNIPPET.py
+
+4. Update line with "target": 
+   Change: "recorded_workflow_enter_workday_hours_XXXXXX_parameterized.json"
+   To: "recorded_workflow_enter_workday_hours_1761494523_parameterized.json"
+   (use your actual filename!)
+
+5. Update "parameter_mappings" to match your placeholders:
+   Example:
+   "parameter_mappings": {
+       "HOURS": "hours",
+       "PROJECT_CODE": "project_code",
+       "NOTES": "notes"
+   }
+
+6. Save workflow_templates.py
+
+================================================================================
+  STEP 5: TEST THE WORKFLOW
+================================================================================
+
+Command:
+--------
+$ python workflow_cli.py execute "enter 8 hours into workday" --auto
+
+Watch as it:
+  ✓ Opens browser
+  ✓ Navigates to Workday
+  ✓ Uses your EXACT recorded clicks
+  ✓ Injects "8" into the hours field
+  ✓ Submits the timesheet
+
+Try different variations:
+  $ python workflow_cli.py execute "log 7.5 hours in workday for project ABC-123" --auto
+  $ python workflow_cli.py execute "add 6 hours to workday timesheet" --auto
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+❌ Workflow not found:
+   → Check that template name matches: "enter workday hours"
+   → Run: python workflow_cli.py list
+
+❌ Clicks miss the target:
+   → Screen resolution changed - re-record the workflow
+   → Make sure Workday UI hasn't changed
+
+❌ Parameters not injecting:
+   → Check parameter_mappings in workflow_templates.py
+   → Verify placeholder names in parameterized JSON
+   → Make sure they match exactly (case-sensitive!)
+
+❌ Import error in workflow_templates.py:
+   → Check for missing commas between workflows
+   → Verify JSON structure is valid
+
+================================================================================
+  FILES CREATED
+================================================================================
+
+1. workflows/recorded_workflow_enter_workday_hours_XXXXX.json
+   - Original recording (43 actions)
+   - All typing character-by-character
+
+2. workflows/recorded_workflow_enter_workday_hours_XXXXX_parameterized.json
+   - Structural version (12-15 actions)
+   - Has parameter placeholders
+
+3. workflow_templates.py (updated)
+   - New "enter workday hours" template
+   - References the parameterized workflow
+
+4. gemini_workflow_executor.py (already updated)
+   - Handles use_recorded_workflow semantic type
+   - Injects parameters automatically
+
+================================================================================
+  DEMO COMMANDS
+================================================================================
+
+Once set up, you can say:
+
+  "Enter 8 hours into Workday"
+  "Log 6.5 hours in Workday for Monday"
+  "Add 7 hours to Workday for project ABC-123 with notes 'team meeting'"
+  "Submit Workday hours: 8 hours, project XYZ-456"
+
+The system will:
+  ✓ Match your request → "enter workday hours" template
+  ✓ Extract parameters (hours, project, notes)
+  ✓ Navigate to Workday
+  ✓ Play your exact recorded clicks
+  ✓ Inject the extracted parameters
+  ✓ Submit the timesheet
+
+100% reliable, every time! 🎉
+
+================================================================================
+  SUMMARY: 3 COMMANDS TO ADD WORKDAY WORKFLOW
+================================================================================
+
+1. Record:
+   $ python simple_recorder.py
+   (Press F9, perform workflow, press F10)
+
+2. Parameterize:
+   $ python parameterize_workday.py workflows/recorded_workflow_enter_workday_hours_XXXXX.json
+
+3. Add template snippet from WORKDAY_TEMPLATE_SNIPPET.py to workflow_templates.py
+   (Update filename on line 105)
+
+4. Test:
+   $ python workflow_cli.py execute "enter 8 hours into workday" --auto
+
+Done! 🚀
+
+================================================================================

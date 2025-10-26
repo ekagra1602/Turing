@@ -1317,6 +1317,109 @@ Answer briefly:
                 print(f"❌ Keyboard shortcut failed: {e}")
             return False
     
+    def _execute_recorded_workflow(self, action: Dict, parameters: Dict[str, str] = None) -> bool:
+        """
+        Execute a recorded workflow file with parameter substitution
+        
+        Args:
+            action: Action containing the workflow filename in 'target'
+            parameters: Parameters to inject into workflow placeholders
+        
+        Returns:
+            True if successful
+        """
+        import pyautogui
+        import json
+        import os
+        
+        workflow_file = action.get('target')
+        parameter_mappings = action.get('parameter_mappings', {})
+        
+        if not workflow_file:
+            if self.verbose:
+                print("❌ No workflow file specified")
+            return False
+        
+        # Resolve workflow file path
+        if not os.path.isabs(workflow_file):
+            workflow_file = os.path.join(
+                os.path.dirname(__file__), 
+                'workflows',
+                workflow_file
+            )
+        
+        if not os.path.exists(workflow_file):
+            if self.verbose:
+                print(f"❌ Workflow file not found: {workflow_file}")
+            return False
+        
+        try:
+            # Load recorded workflow
+            with open(workflow_file, 'r') as f:
+                workflow = json.load(f)
+            
+            if self.verbose:
+                print(f"🎬 Playing recorded workflow: {workflow.get('name', 'unnamed')}")
+                print(f"   Actions: {len(workflow['actions'])}")
+                if workflow.get('parameterized'):
+                    print(f"   📝 Parameterized workflow - injecting values:")
+                    for placeholder, param_name in parameter_mappings.items():
+                        param_value = parameters.get(param_name, '(missing)') if parameters else '(missing)'
+                        print(f"      {placeholder} = {param_value}")
+            
+            # Execute each action
+            for i, recorded_action in enumerate(workflow['actions'], 1):
+                # Wait for delay
+                if recorded_action.get('delay', 0) > 0:
+                    time.sleep(recorded_action['delay'])
+                
+                action_type = recorded_action['type']
+                
+                if action_type == 'click':
+                    x, y = recorded_action['x'], recorded_action['y']
+                    if self.verbose:
+                        print(f"   [{i}/{len(workflow['actions'])}] 🖱️  Click ({x}, {y})")
+                    pyautogui.click(x, y)
+                
+                elif action_type == 'type':
+                    text = recorded_action['text']
+                    if self.verbose:
+                        print(f"   [{i}/{len(workflow['actions'])}] ⌨️  Type '{text}'")
+                    pyautogui.write(text, interval=0.05)
+                
+                elif action_type == 'key':
+                    key = recorded_action['key']
+                    if self.verbose:
+                        print(f"   [{i}/{len(workflow['actions'])}] ⌨️  Press {key}")
+                    pyautogui.press(key)
+                
+                elif action_type == 'type_parameter':
+                    # Inject parameter value
+                    placeholder = recorded_action['placeholder']
+                    param_name = parameter_mappings.get(placeholder)
+                    
+                    if param_name and parameters and param_name in parameters:
+                        param_value = parameters[param_name]
+                        if self.verbose:
+                            print(f"   [{i}/{len(workflow['actions'])}] 📝 Type parameter {{{placeholder}}}: '{param_value}'")
+                        pyautogui.write(param_value, interval=0.05)
+                    else:
+                        if self.verbose:
+                            print(f"   [{i}/{len(workflow['actions'])}] ⚠️  Missing parameter: {placeholder}")
+                        # Continue anyway - might work without it
+            
+            if self.verbose:
+                print("✅ Recorded workflow complete!")
+            
+            return True
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"❌ Recorded workflow failed: {e}")
+                import traceback
+                traceback.print_exc()
+            return False
+    
     def _execute_tab_navigate(self, target: str) -> bool:
         """Navigate using Tab key to find elements"""
         if self.verbose:
@@ -2225,6 +2328,9 @@ BE SPECIFIC and HELPFUL. If you see the element, tell me exactly how to click it
             elif semantic_type == 'keyboard_shortcut':
                 shortcut = action_with_params.get('value')
                 success = self._execute_keyboard_shortcut(shortcut)
+            
+            elif semantic_type == 'use_recorded_workflow':
+                success = self._execute_recorded_workflow(action_with_params, parameters)
 
             else:
                 if self.verbose:

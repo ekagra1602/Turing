@@ -1,0 +1,78 @@
+================================================================================
+  📹 RECORDING WORKDAY HOURS ENTRY WORKFLOW
+================================================================================
+
+STEP 1: START THE RECORDER
+---------------------------
+$ python simple_recorder.py
+
+  Controls:
+  - Press F9 to START recording
+  - Press F10 to STOP recording
+  - Press ESC to quit
+
+
+STEP 2: PREPARE YOUR WORKDAY SESSION
+-------------------------------------
+Before pressing F9:
+  ✓ Open Raycast (or have terminal ready)
+  ✓ Make sure Workday is accessible
+  ✓ Know what hours you'll enter (use dummy data)
+
+
+STEP 3: RECORD THE WORKFLOW
+----------------------------
+Press F9, then perform these actions:
+
+  1. Open Brave Browser (via Raycast)
+     - Press Option+Space (Raycast)
+     - Type "brave browser"
+     - Press Enter
+
+  2. Navigate to Workday
+     - Cmd+T (new tab) or Cmd+L (address bar)
+     - Type "workday.com" (or your company's Workday URL)
+     - Press Enter
+     - Wait for page to load
+
+  3. Enter Hours
+     - Click on time entry section
+     - Click on date/day field
+     - Enter hours (e.g., "8")
+     - Tab or click to next field if needed
+     - Enter project/task code if applicable
+     - Click Submit/Save button
+
+  4. Press F10 to STOP recording
+
+
+STEP 4: NAME YOUR WORKFLOW
+---------------------------
+When prompted:
+  Workflow name: enter workday hours
+  Description: Enter hours into Workday timesheet
+
+
+IMPORTANT TIPS:
+---------------
+✓ Use SIMPLE dummy data (e.g., always enter "8" for hours)
+✓ Click PRECISELY on the fields
+✓ Use Tab to move between fields (faster than clicking)
+✓ Wait for page loads (1-2 seconds)
+✓ Click Submit/Save at the END
+
+The recorder will save to:
+  workflows/recorded_workflow_enter_workday_hours_<timestamp>.json
+
+
+STEP 5: PROCEED TO PARAMETERIZATION
+------------------------------------
+After recording, come back and we'll:
+  1. Extract the structure (remove typing)
+  2. Add parameter placeholders
+  3. Create the workflow template
+  4. Test it!
+
+================================================================================
+  🚀 READY? Run: python simple_recorder.py
+================================================================================

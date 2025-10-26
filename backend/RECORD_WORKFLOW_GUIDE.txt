@@ -1,0 +1,106 @@
+================================================================================
+  📹 RECORDED WORKFLOW SYSTEM - Quick Guide
+================================================================================
+
+The system now combines:
+  • Hardcoded workflow templates (reliable structure)
+  • Your recorded exact coordinates (100% accurate clicks)
+
+================================================================================
+  🎬 HOW IT WORKS
+================================================================================
+
+1. RECORD YOUR WORKFLOW ONCE
+   Run the simple recorder to capture exact clicks/keystrokes:
+   
+   $ python simple_recorder.py
+   
+   Controls:
+   - Press F9 to START recording
+   - Perform your workflow (e.g., compose Gmail email)
+   - Press F10 to STOP
+   
+   This saves a JSON file with EXACT pixel coordinates
+
+2. THE TEMPLATE USES YOUR RECORDING
+   The "send email via gmail" template now:
+   - Opens browser & navigates to Gmail (keyboard shortcuts - reliable)
+   - Then plays YOUR recorded workflow (exact coordinates)
+   
+   See: workflow_templates.py → "send email via gmail"
+
+3. EXECUTE WITH PARAMETERS
+   $ python workflow_cli.py execute "write an email to X with subject Y and body Z" --auto
+   
+   The system will:
+   ✓ Match "write an email" → "send email via gmail" template
+   ✓ Extract parameters (recipient, subject, body)
+   ✓ Navigate to Gmail using keyboard shortcuts
+   ✓ Play your recorded workflow (exact clicks)
+
+================================================================================
+  📝 YOUR RECORDED WORKFLOW
+================================================================================
+
+File: workflows/recorded_workflow_send_gmail_email_1761493414.json
+
+This contains 43 actions including:
+  - Exact click at (203, 179) for Compose button
+  - Typing recipient email
+  - Tab to subject field
+  - Typing subject
+  - Tab to body field
+  - Typing body
+  - Click Send at (849, 911)
+
+These coordinates are EXACT for your screen resolution (1470x956)
+
+================================================================================
+  ⚡ TESTING
+================================================================================
+
+Test the workflow:
+$ python workflow_cli.py execute "write an email to test@example.com with subject 'Hello' and body 'Testing'" --auto
+
+The workflow will:
+1. Open browser
+2. Navigate to Gmail
+3. Play your recorded workflow with exact coordinates
+4. Send the email
+
+================================================================================
+  🔧 RE-RECORDING
+================================================================================
+
+If clicks aren't working (screen changed, Gmail updated, etc.):
+
+1. Run recorder again:
+   $ python simple_recorder.py
+
+2. Update the filename in workflow_templates.py:
+   Line 105: "target": "YOUR_NEW_RECORDED_FILE.json"
+
+3. Done! The template now uses your new recording.
+
+================================================================================
+  💡 WHY THIS APPROACH?
+================================================================================
+
+Gemini vision has issues with:
+❌ Finding small UI elements (To/Subject fields)
+❌ Distinguishing similar elements
+❌ Consistent clicking in the same spot
+
+Your recording provides:
+✅ Exact pixel coordinates
+✅ Perfect timing between actions
+✅ 100% reproducible clicks
+
+The template provides:
+✅ Navigation structure (browser opening, URL entry)
+✅ Parameter extraction from natural language
+✅ Error handling and retries
+
+BEST OF BOTH WORLDS! 🎉
+
+================================================================================

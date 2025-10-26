@@ -80,7 +80,7 @@ WORKFLOW_TEMPLATES: Dict[str, List[Dict]] = {
             "step_number": 6,
             "semantic_type": "navigate",
             "description": "Press Enter to navigate to Gmail",
-            "target": "address bar",
+            "target": "gmail.com",
             "value": "gmail.com",
             "timestamp_seconds": 4.0,
             "confidence": 1.0,
@@ -100,91 +100,19 @@ WORKFLOW_TEMPLATES: Dict[str, List[Dict]] = {
         },
         {
             "step_number": 8,
-            "semantic_type": "click_element",
-            "description": "Click Compose button",
-            "target": "Compose",
+            "semantic_type": "use_recorded_workflow",
+            "description": "Use recorded workflow for Gmail compose (parameterized)",
+            "target": "recorded_workflow_send_gmail_email_1761493414_parameterized.json",
             "value": None,
-            "timestamp_seconds": 7.5,
-            "confidence": 1.0,
-            "is_parameterizable": False,
-            "parameter_name": None
-        },
-        {
-            "step_number": 9,
-            "semantic_type": "wait",
-            "description": "Wait for compose window to open",
-            "target": None,
-            "value": "1.5",
-            "timestamp_seconds": 9.0,
-            "confidence": 1.0,
-            "is_parameterizable": False,
-            "parameter_name": None
-        },
-        {
-            "step_number": 10,
-            "semantic_type": "type_text",
-            "description": "Type recipient email address",
-            "target": "To",
-            "value": "{recipient_email}",
-            "timestamp_seconds": 10.0,
+            "timestamp_seconds": 7.0,
             "confidence": 1.0,
             "is_parameterizable": True,
-            "parameter_name": "recipient_email"
-        },
-        {
-            "step_number": 11,
-            "semantic_type": "click_element",
-            "description": "Click Subject field",
-            "target": "Subject",
-            "value": None,
-            "timestamp_seconds": 11.0,
-            "confidence": 1.0,
-            "is_parameterizable": False,
-            "parameter_name": None
-        },
-        {
-            "step_number": 12,
-            "semantic_type": "type_text",
-            "description": "Type email subject",
-            "target": "Subject",
-            "value": "{email_subject}",
-            "timestamp_seconds": 12.0,
-            "confidence": 1.0,
-            "is_parameterizable": True,
-            "parameter_name": "email_subject"
-        },
-        {
-            "step_number": 13,
-            "semantic_type": "click_element",
-            "description": "Click in email body",
-            "target": "email body",
-            "value": None,
-            "timestamp_seconds": 13.0,
-            "confidence": 1.0,
-            "is_parameterizable": False,
-            "parameter_name": None
-        },
-        {
-            "step_number": 14,
-            "semantic_type": "type_text",
-            "description": "Type email message",
-            "target": "email body",
-            "value": "{email_body}",
-            "timestamp_seconds": 14.0,
-            "confidence": 1.0,
-            "is_parameterizable": True,
-            "parameter_name": "email_body"
-        },
-        {
-            "step_number": 15,
-            "semantic_type": "click_element",
-            "description": "Click Send button",
-            "target": "Send",
-            "value": None,
-            "timestamp_seconds": 15.0,
-            "confidence": 1.0,
-            "is_parameterizable": False,
-            "parameter_name": None
+            "parameter_name": "recorded_workflow_file",
+            "parameter_mappings": {
+                "RECIPIENT_EMAIL": "recipient_email",
+                "SUBJECT": "email_subject", 
+                "BODY": "email_body"
+            }
         }
     ],
     
