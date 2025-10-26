@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
 """
-Video-Based Screen Recorder
-Records screen activity as video for VLM analysis
+Robust Screen Video Recorder using ffmpeg native screen capture
+Uses avfoundation on macOS for smooth, stable recording
 """
 
-import cv2
-import numpy as np
-import mss
+import subprocess
 import time
-import threading
+import signal
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 from datetime import datetime
 
 
 class VideoRecorder:
     """
-    Records screen activity as video for later VLM analysis.
+    Screen video recorder using ffmpeg's native screen capture.
 
-    Much simpler than screenshot-based approach:
-    - Records entire screen as MP4
-    - Let Gemini watch the video and understand the workflow
-    - No complex event tracking needed
+    Why native capture instead of piping:
+    - No Python frame loop timing issues
+    - No color conversion overhead
+    - ffmpeg handles frame timing internally
+    - Much smoother and more stable
     """
 
-    def __init__(self, fps: int = 10, output_dir: Path = None):
+    def __init__(self, fps: int = 30, output_dir: Path = None):
         """
         Initialize video recorder
 
         Args:
-            fps: Frames per second (10 is plenty for UI interactions)
+            fps: Frames per second (30 is required by avfoundation on macOS)
             output_dir: Directory to save recordings
         """
         self.fps = fps
@@ -37,23 +36,51 @@ class VideoRecorder:
         self.output_dir.mkdir(exist_ok=True)
 
         self.is_recording = False
-        self.recording_thread = None
+        self.ffmpeg_process = None
         self.current_video_path = None
         self.start_time = None
-        self.frame_count = 0
 
-        # Video writer
-        self.video_writer = None
-        self.sct = mss.mss()
+        # Get screen device index
+        self.screen_device = self._get_screen_device()
 
-        # Get screen dimensions
-        monitor = self.sct.monitors[1]  # Primary monitor
-        self.screen_width = monitor["width"]
-        self.screen_height = monitor["height"]
-
-        print(f"✅ Video Recorder initialized")
-        print(f"   Resolution: {self.screen_width}x{self.screen_height}")
+        print(f"✅ Video Recorder initialized (ffmpeg native capture)")
+        print(f"   Screen device: {self.screen_device}")
         print(f"   FPS: {fps}")
+
+    def _get_screen_device(self) -> str:
+        """Get the screen capture device index for avfoundation"""
+        try:
+            # List available devices
+            result = subprocess.run(
+                ['ffmpeg', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+
+            # Parse stderr output to find screen capture device
+            stderr = result.stderr
+            for line in stderr.split('\n'):
+                # Look for line like "[3] Capture screen 0"
+                if 'Capture screen' in line:
+                    # Extract device index - pattern is "[N] Capture screen X"
+                    if '[' in line and ']' in line:
+                        start = line.find('[')
+                        end = line.find(']')
+                        if start != -1 and end != -1:
+                            device_idx = line[start+1:end].strip()
+                            # Make sure it's actually a number
+                            if device_idx.isdigit():
+                                print(f"   Found screen capture device: {device_idx}")
+                                return device_idx
+
+            # Default to device 3 (common for screen capture)
+            print("   Using default screen device: 3")
+            return "3"
+
+        except Exception as e:
+            print(f"⚠️  Could not detect screen device, using default: {e}")
+            return "3"
 
     def start_recording(self, workflow_name: str) -> Optional[Path]:
         """
@@ -76,53 +103,54 @@ class VideoRecorder:
         filename = f"{timestamp}_{safe_name}.mp4"
         self.current_video_path = self.output_dir / filename
 
-        # Setup video writer
-        # Try multiple codecs for macOS compatibility
-        codecs_to_try = [
-            ('avc1', '.mp4'),  # H.264 (Apple preferred)
-            ('mp4v', '.mp4'),  # MPEG-4
-            ('MJPG', '.avi'),  # Motion JPEG (fallback, always works)
+        # Start ffmpeg with native screen capture
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-f', 'avfoundation',          # macOS screen capture
+            '-framerate', str(self.fps),    # Input framerate (must be 30 or 60)
+            '-i', self.screen_device,       # Screen device index
+            '-vcodec', 'libx264',           # H.264 encoding
+            '-preset', 'ultrafast',         # Fast encoding for real-time
+            '-crf', '23',                   # Good quality (18-28 range, lower=better)
+            '-pix_fmt', 'yuv420p',          # Standard compatibility
+            '-movflags', '+faststart',      # Enable streaming
+            '-y',                           # Overwrite
+            str(self.current_video_path)
         ]
 
-        self.video_writer = None
-        for codec, ext in codecs_to_try:
-            try:
-                # Update file extension if needed
-                if not str(self.current_video_path).endswith(ext):
-                    self.current_video_path = self.current_video_path.with_suffix(ext)
+        try:
+            self.ffmpeg_process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,  # Capture errors
+                text=True
+            )
+        except FileNotFoundError:
+            print("❌ ffmpeg not found! Please install:")
+            print("   brew install ffmpeg")
+            return None
+        except Exception as e:
+            print(f"❌ Failed to start ffmpeg: {e}")
+            return None
 
-                fourcc = cv2.VideoWriter_fourcc(*codec)
-                writer = cv2.VideoWriter(
-                    str(self.current_video_path),
-                    fourcc,
-                    self.fps,
-                    (self.screen_width, self.screen_height)
-                )
+        # Give ffmpeg a moment to start
+        time.sleep(0.5)
 
-                if writer.isOpened():
-                    self.video_writer = writer
-                    print(f"   ✓ Using codec: {codec}")
-                    break
-                else:
-                    writer.release()
-            except Exception as e:
-                print(f"   ⚠️  Codec {codec} failed: {e}")
-                continue
-
-        if not self.video_writer or not self.video_writer.isOpened():
-            print("❌ Failed to initialize video writer with any codec!")
+        # Check if process is still running (not immediately crashed)
+        if self.ffmpeg_process.poll() is not None:
+            stderr = self.ffmpeg_process.stderr.read() if self.ffmpeg_process.stderr else ""
+            print(f"❌ ffmpeg failed to start properly")
+            if stderr:
+                print(f"   Error: {stderr[:500]}")
             return None
 
         # Start recording
         self.is_recording = True
         self.start_time = time.time()
-        self.frame_count = 0
-
-        # Start recording thread
-        self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
-        self.recording_thread.start()
 
         print(f"🎥 Recording started: {filename}")
+        print(f"   ✓ Using ffmpeg native screen capture (avfoundation)")
         return self.current_video_path
 
     def stop_recording(self) -> Optional[Path]:
@@ -139,58 +167,42 @@ class VideoRecorder:
         # Stop recording
         self.is_recording = False
 
-        # Wait for thread to finish
-        if self.recording_thread:
-            self.recording_thread.join(timeout=2.0)
+        # Send graceful stop signal to ffmpeg (q key)
+        if self.ffmpeg_process:
+            try:
+                # Send SIGINT (Ctrl+C) for graceful shutdown
+                self.ffmpeg_process.send_signal(signal.SIGINT)
 
-        # Release video writer
-        if self.video_writer:
-            self.video_writer.release()
-            self.video_writer = None
+                # Wait for ffmpeg to finish encoding
+                self.ffmpeg_process.wait(timeout=10.0)
+
+            except subprocess.TimeoutExpired:
+                print("⚠️  ffmpeg took too long, force killing")
+                self.ffmpeg_process.kill()
+            except Exception as e:
+                print(f"⚠️  Error stopping ffmpeg: {e}")
+                try:
+                    self.ffmpeg_process.kill()
+                except:
+                    pass
 
         duration = time.time() - self.start_time
 
         print(f"⏹️  Recording stopped")
         print(f"   Duration: {duration:.1f}s")
-        print(f"   Frames: {self.frame_count}")
         print(f"   File: {self.current_video_path}")
 
+        # Verify file was created
+        if self.current_video_path.exists():
+            file_size = self.current_video_path.stat().st_size
+            print(f"   Size: {file_size / (1024*1024):.1f} MB")
+
+            if file_size < 1000:
+                print("   ⚠️  WARNING: File is suspiciously small!")
+        else:
+            print("   ❌ Video file was not created!")
+
         return self.current_video_path
-
-    def _record_loop(self):
-        """Main recording loop (runs in separate thread)"""
-        monitor = self.sct.monitors[1]  # Primary monitor
-
-        frame_delay = 1.0 / self.fps
-        next_frame_time = time.time()
-
-        while self.is_recording:
-            try:
-                # Capture screen
-                screenshot = self.sct.grab(monitor)
-
-                # Convert to numpy array
-                frame = np.array(screenshot)
-
-                # Convert BGRA to BGR (OpenCV format)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-
-                # Write frame
-                self.video_writer.write(frame)
-                self.frame_count += 1
-
-                # Maintain consistent frame rate
-                next_frame_time += frame_delay
-                sleep_time = next_frame_time - time.time()
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-                else:
-                    # We're behind, skip sleep but update next_frame_time
-                    next_frame_time = time.time()
-
-            except Exception as e:
-                print(f"⚠️  Recording error: {e}")
-                break
 
     def get_recording_info(self) -> dict:
         """Get current recording status and info"""
@@ -199,7 +211,6 @@ class VideoRecorder:
             return {
                 'is_recording': True,
                 'duration': duration,
-                'frames': self.frame_count,
                 'fps': self.fps,
                 'file': str(self.current_video_path)
             }
@@ -213,24 +224,36 @@ class VideoRecorder:
         if self.is_recording:
             self.stop_recording()
 
-        if hasattr(self, 'sct'):
-            self.sct.close()
-
 
 def test_video_recorder():
     """Test the video recorder"""
     print("=" * 70)
-    print("Video Recorder Test")
+    print("Video Recorder Test (ffmpeg native screen capture)")
     print("=" * 70)
     print()
 
-    recorder = VideoRecorder(fps=10)
+    # Check ffmpeg
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2)
+        print("✅ ffmpeg found")
+        print()
+    except FileNotFoundError:
+        print("❌ ffmpeg not found!")
+        print("   Install with: brew install ffmpeg")
+        print()
+        return
+
+    recorder = VideoRecorder(fps=30)
 
     print("Starting 5-second test recording...")
     print("Move your mouse and click around!")
     print()
 
     video_path = recorder.start_recording("test_workflow")
+
+    if not video_path:
+        print("❌ Failed to start recording")
+        return
 
     # Record for 5 seconds
     for i in range(5, 0, -1):
@@ -243,11 +266,16 @@ def test_video_recorder():
     print()
     print("=" * 70)
     print("✅ Test complete!")
-    print(f"Video saved to: {final_path}")
-    print()
-    print("You can now:")
-    print(f"  1. Play the video: open {final_path}")
-    print(f"  2. Upload to Gemini for analysis")
+
+    if final_path and final_path.exists():
+        print(f"Video saved to: {final_path}")
+        print()
+        print("Verify with:")
+        print(f"  ffprobe {final_path}")
+        print(f"  open {final_path}")
+    else:
+        print("❌ Video file not created!")
+
     print("=" * 70)
 
 

@@ -26,7 +26,7 @@ class RecorderUI:
     """
 
     def __init__(self):
-        self.recorder = VideoRecorder(fps=10)
+        self.recorder = VideoRecorder(fps=30)
         self.analyzer = VideoWorkflowAnalyzer(verbose=True)
         self.memory = VisualWorkflowMemory()
 

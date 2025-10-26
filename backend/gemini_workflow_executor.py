@@ -28,13 +28,13 @@ class GeminiWorkflowExecutor:
     - Provides rich feedback during execution
     """
     
-    def __init__(self, 
+    def __init__(self,
                  memory: VisualWorkflowMemory = None,
                  gemini: GeminiComputerUse = None,
                  verbose: bool = True):
         """
         Initialize Gemini Workflow Executor
-        
+
         Args:
             memory: VisualWorkflowMemory instance
             gemini: GeminiComputerUse instance (or create new)
@@ -43,14 +43,126 @@ class GeminiWorkflowExecutor:
         self.memory = memory or VisualWorkflowMemory()
         self.gemini = gemini or GeminiComputerUse(verbose=verbose)
         self.verbose = verbose
-        
+
         # Execution state
         self.current_workflow = None
         self.current_step_number = 0
         self.execution_results = []
-        
-        print("✅ Gemini Workflow Executor initialized")
-    
+
+        # Load all workflows as intention -> semantic_actions mapping
+        self.workflows_by_intention = self._load_all_workflows()
+
+        if self.verbose:
+            print("✅ Gemini Workflow Executor initialized")
+            if self.workflows_by_intention:
+                print(f"   Loaded {len(self.workflows_by_intention)} workflows:")
+                for intention in list(self.workflows_by_intention.keys())[:5]:
+                    print(f"     • {intention}")
+                if len(self.workflows_by_intention) > 5:
+                    print(f"     ... and {len(self.workflows_by_intention) - 5} more")
+
+    def _load_all_workflows(self) -> Dict[str, List[Dict]]:
+        """
+        Load all ready workflows as a dictionary mapping intention -> semantic_actions
+
+        Returns:
+            Dict where:
+                - Key: overall_intention/description from workflow
+                - Value: list of semantic_actions
+        """
+        workflows_dict = {}
+
+        try:
+            # Get all ready workflows
+            workflows = self.memory.list_workflows(status='ready')
+
+            for workflow in workflows:
+                workflow_id = workflow['workflow_id']
+
+                # Load full workflow to get semantic actions
+                try:
+                    full_workflow = self.memory.get_workflow(workflow_id)
+
+                    # Get semantic actions
+                    semantic_actions = full_workflow.get('semantic_actions', [])
+
+                    if semantic_actions:
+                        # Use description as the intention/goal
+                        # (This is populated from Gemini's overall_intention during analysis)
+                        intention = full_workflow.get('description', workflow.get('name', 'Unknown'))
+
+                        # Store in dictionary
+                        workflows_dict[intention] = semantic_actions
+
+                except Exception as e:
+                    if self.verbose:
+                        print(f"⚠️  Could not load workflow {workflow_id}: {e}")
+
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️  Error loading workflows: {e}")
+
+        return workflows_dict
+
+    def reload_workflows(self):
+        """
+        Reload all workflows from memory.
+        Call this after recording new workflows to update the dictionary.
+        """
+        if self.verbose:
+            print("🔄 Reloading workflows...")
+
+        self.workflows_by_intention = self._load_all_workflows()
+
+        if self.verbose:
+            print(f"✅ Reloaded {len(self.workflows_by_intention)} workflows")
+
+    def get_workflow_by_intention(self, intention_query: str) -> Optional[List[Dict]]:
+        """
+        Find semantic actions for a workflow by matching the intention.
+
+        Args:
+            intention_query: Natural language description of what you want to do
+
+        Returns:
+            List of semantic actions, or None if no match found
+        """
+        # Exact match first
+        if intention_query in self.workflows_by_intention:
+            return self.workflows_by_intention[intention_query]
+
+        # Fuzzy match - check if query words appear in intention
+        query_lower = intention_query.lower()
+        query_words = set(query_lower.split())
+
+        best_match = None
+        best_score = 0
+
+        for intention, actions in self.workflows_by_intention.items():
+            intention_lower = intention.lower()
+
+            # Substring match
+            if query_lower in intention_lower or intention_lower in query_lower:
+                if self.verbose:
+                    print(f"✨ Matched intention: '{intention}'")
+                return actions
+
+            # Word-based matching
+            intention_words = set(intention_lower.split())
+            matching_words = query_words & intention_words
+            score = len(matching_words) / len(query_words) if query_words else 0
+
+            if score > best_score and score > 0.4:  # At least 40% word match
+                best_score = score
+                best_match = (intention, actions)
+
+        if best_match:
+            if self.verbose:
+                print(f"✨ Matched intention: '{best_match[0]}' (score: {best_score:.2f})")
+            return best_match[1]
+
+        return None
+
     def execute_workflow(self,
                         workflow: Dict,
                         parameters: Dict[str, str] = None,
